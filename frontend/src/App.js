@@ -27,7 +27,7 @@ function App() {
     formData.append("file", file);
     try {
       const res = await axios.post(
-        "http://127.0.0.1:8000/analyze",
+        "/analyze",
         formData,
         {
           headers: { "Content-Type": "multipart/form-data" },
@@ -57,7 +57,7 @@ function App() {
         // 詳細を取得
         setLoadingDetails(prev => ({ ...prev, [firstMenu]: true }));
         axios.post(
-          "http://127.0.0.1:8000/menu-detail",
+          "/menu-detail",
           {
             menu_name: firstMenu,
             diagnosis: result.diagnosis
@@ -107,7 +107,7 @@ function App() {
     setLoadingDetails(prev => ({ ...prev, [menuName]: true }));
     try {
       const res = await axios.post(
-        "http://127.0.0.1:8000/menu-detail",
+        "/menu-detail",
         {
           menu_name: menuName,
           diagnosis: result.diagnosis
