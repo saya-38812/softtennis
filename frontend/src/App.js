@@ -9,6 +9,7 @@ function App() {
   const [error, setError] = useState(null); // エラー表示用
   const [menuDetails, setMenuDetails] = useState({}); // メニュー詳細を保存
   const [loadingDetails, setLoadingDetails] = useState({}); // 各メニューの詳細読み込み状態
+  const API_BASE = "https://softtennis-zzdz.onrender.com";
 
   // ファイル選択時のハンドラ
   const handleFileChange = (e) => {
@@ -27,7 +28,7 @@ function App() {
     formData.append("file", file);
     try {
       const res = await axios.post(
-        "/analyze",
+        "${API_BASE}/analyze",
         formData,
         {
           headers: { "Content-Type": "multipart/form-data" },
@@ -57,7 +58,7 @@ function App() {
         // 詳細を取得
         setLoadingDetails(prev => ({ ...prev, [firstMenu]: true }));
         axios.post(
-          "/menu-detail",
+          "${API_BASE}/menu-detail",
           {
             menu_name: firstMenu,
             diagnosis: result.diagnosis
@@ -107,7 +108,7 @@ function App() {
     setLoadingDetails(prev => ({ ...prev, [menuName]: true }));
     try {
       const res = await axios.post(
-        "/menu-detail",
+        "${API_BASE}/menu-detail",
         {
           menu_name: menuName,
           diagnosis: result.diagnosis
