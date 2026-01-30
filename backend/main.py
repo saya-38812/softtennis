@@ -59,3 +59,8 @@ async def get_menu_detail(request: MenuDetailRequest):
         return {"status": "ok", "detail": detail}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"詳細生成中エラー: {e}")
+
+from fastapi.staticfiles import StaticFiles
+
+# React buildを配信する
+app.mount("/", StaticFiles(directory="build", html=True), name="static")

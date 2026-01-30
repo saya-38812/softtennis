@@ -1,7 +1,10 @@
 fastapi
 uvicorn
-numpy
-opencv-python
-mediapipe
-openai
 python-dotenv
+python-multipart
+pydantic
+
+openai
+opencv-python-headless
+mediapipe
+numpy
