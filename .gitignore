@@ -1,0 +1,11 @@
+# Created by venv; see https://docs.python.org/3/library/venv.html
+
+backend/.env
+.env
+.env.local
+
+# Python venv
+.venv/
+venv/
+__pycache__/
+*.pyc

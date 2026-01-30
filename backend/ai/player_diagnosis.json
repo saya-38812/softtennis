@@ -1,0 +1,17 @@
+{
+  "player": {
+    "age": 13,
+    "hand": "right",
+    "serve_score": 76
+  },
+  "weakness": {
+    "impact_height": "ok",
+    "weight_transfer": "ok",
+    "body_open": "good"
+  },
+  "raw_values": {
+    "impact_diff": -0.005,
+    "weight_diff": -0.068,
+    "open_diff": 0.0
+  }
+}
