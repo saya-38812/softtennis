@@ -11,24 +11,29 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const [menuDetails, setMenuDetails] = useState({});
-  const [loadingDetails, setLoadingDetails] = useState({});
+  const [menuDetail, setMenuDetail] = useState("");
+  const [loadingMenu, setLoadingMenu] = useState(false);
 
+  // ============================
   // ファイル選択
+  // ============================
   const handleFileChange = (e) => {
     setFile(e.target.files[0]);
     setResult(null);
     setError(null);
-    setMenuDetails({});
+    setMenuDetail("");
   };
 
+  // ============================
   // 動画解析
+  // ============================
   const handleAnalyze = async () => {
     if (!file) return;
 
     setLoading(true);
     setError(null);
-    setMenuDetails({});
+    setResult(null);
+    setMenuDetail("");
 
     const formData = new FormData();
     formData.append("file", file);
@@ -39,105 +44,56 @@ function App() {
         timeout: 5 * 60 * 1000,
       });
 
-      console.log("API RESULT:", res.data);
       setResult(res.data);
 
     } catch (err) {
-      if (err.response?.data?.detail) {
-        setError("解析に失敗しました: " + err.response.data.detail);
-      } else {
-        setError("解析に失敗しました。もう一度お試しください。");
-      }
-      setResult(null);
+      setError("解析に失敗しました。もう一度お試しください。");
+      console.error(err);
 
     } finally {
       setLoading(false);
     }
   };
 
-  // 最初のメニュー詳細を自動取得
+  // ============================
+  // 最初の練習メニュー詳細を自動取得
+  // ============================
   useEffect(() => {
     if (!result?.menu?.length) return;
 
     const firstMenu = result.menu[0];
 
-    if (menuDetails[firstMenu] || loadingDetails[firstMenu]) return;
-
-    setLoadingDetails((prev) => ({ ...prev, [firstMenu]: true }));
+    setLoadingMenu(true);
 
     axios
-      .post(
-        `${API_BASE}/menu-detail`,
-        {
-          menu_name: firstMenu,
-          diagnosis: result.diagnosis,
-        },
-        { headers: { "Content-Type": "application/json" } }
-      )
+      .post(`${API_BASE}/menu-detail`, {
+        menu_name: firstMenu,
+        diagnosis: result.diagnosis,
+      })
       .then((res) => {
-        setMenuDetails((prev) => ({
-          ...prev,
-          [firstMenu]: res.data.detail,
-        }));
+        setMenuDetail(res.data.detail);
       })
       .catch(() => {
-        setError("メニュー詳細の取得に失敗しました。");
+        setMenuDetail("詳細を取得できませんでした。");
       })
       .finally(() => {
-        setLoadingDetails((prev) => {
-          const copy = { ...prev };
-          delete copy[firstMenu];
-          return copy;
-        });
+        setLoadingMenu(false);
       });
+
   }, [result]);
 
-  // メニュー詳細の開閉
-  const handleGetMenuDetail = async (menuName) => {
-    if (menuDetails[menuName]) {
-      setMenuDetails((prev) => {
-        const copy = { ...prev };
-        delete copy[menuName];
-        return copy;
-      });
-      return;
-    }
-
-    setLoadingDetails((prev) => ({ ...prev, [menuName]: true }));
-
-    try {
-      const res = await axios.post(
-        `${API_BASE}/menu-detail`,
-        {
-          menu_name: menuName,
-          diagnosis: result.diagnosis,
-        },
-        { headers: { "Content-Type": "application/json" } }
-      );
-
-      setMenuDetails((prev) => ({
-        ...prev,
-        [menuName]: res.data.detail,
-      }));
-    } catch {
-      setError("メニュー詳細の取得に失敗しました。");
-    } finally {
-      setLoadingDetails((prev) => {
-        const copy = { ...prev };
-        delete copy[menuName];
-        return copy;
-      });
-    }
-  };
-
+  // ============================
+  // 表示
+  // ============================
   return (
     <div className="app-container">
       <div className="app-content">
+
         {/* ヘッダー */}
         <header className="app-header">
-          <h1 className="app-title">ソフトテニス サーブフォームAIコーチ</h1>
+          <h1 className="app-title">サーブフォームAIコーチ</h1>
           <p className="app-subtitle">
-            動画をアップロードして、あなたのサーブを分析しましょう
+            動画をアップロードして改善点を確認しましょう
           </p>
         </header>
 
@@ -166,83 +122,77 @@ function App() {
         {/* エラー */}
         {error && <div className="error-message">{error}</div>}
 
-        {/* スコア */}
+        {/* 結果表示 */}
         {result && (
-          <p className="score-text">
-            スコア：{result.diagnosis.player.serve_score}点
-          </p>
-        )}
-
-        {/* フォーム比較 */}
-        {result?.ideal_image && result?.user_image && (
-          <div className="result-card">
-            <h2 className="result-title">フォーム比較（理想 vs あなた）</h2>
-
-            <p className="focus-label">
-              改善ポイント：{result.focus_label}
+          <>
+            {/* スコア */}
+            <p className="score-text">
+              スコア：{result?.diagnosis?.player?.serve_score ?? "-"}点
             </p>
-            <p className="focus-message">{result.message}</p>
 
-            <div className="compare-grid">
-              <div className="compare-box">
-                <h3>理想フォーム</h3>
-                <img
-                  src={`${API_BASE}${result.ideal_image}`}
-                  alt="ideal"
-                  className="compare-img"
-                />
-              </div>
+            {/* フォーム比較 */}
+            {result.ideal_image && result.user_image && (
+              <div className="result-card">
+                <h2 className="result-title">
+                  フォーム比較（理想 vs あなた）
+                </h2>
 
-              <div className="compare-box">
-                <h3>あなたのフォーム</h3>
-                <img
-                  src={`${API_BASE}${result.user_image}`}
-                  alt="user"
-                  className="compare-img"
-                />
-              </div>
-            </div>
-          </div>
-        )}
+                <p className="focus-label">
+                  改善ポイント：{result.focus_label}
+                </p>
 
-        {/* 練習メニュー */}
-        {result?.menu?.length > 0 && (
-          <div className="result-card">
-            <h2 className="result-title">おすすめ練習メニュー</h2>
+                <p className="focus-message">{result.message}</p>
 
-            {result.menu.map((menuName, i) => (
-              <div key={i} className="menu-item">
-                <div className="menu-item-header">
-                  <span>{menuName}</span>
-
-                  <button
-                    onClick={() => handleGetMenuDetail(menuName)}
-                    disabled={loadingDetails[menuName]}
-                  >
-                    {loadingDetails[menuName]
-                      ? "読み込み中…"
-                      : menuDetails[menuName]
-                      ? "閉じる"
-                      : "詳細を見る"}
-                  </button>
-                </div>
-
-                {menuDetails[menuName] && (
-                  <div className="menu-detail-content">
-                    {menuDetails[menuName]}
+                <div className="compare-grid">
+                  <div className="compare-box">
+                    <h3>理想フォーム</h3>
+                    <img
+                      src={`${API_BASE}${result.ideal_image}`}
+                      alt="ideal"
+                      className="compare-img"
+                    />
                   </div>
+
+                  <div className="compare-box">
+                    <h3>あなたのフォーム</h3>
+                    <img
+                      src={`${API_BASE}${result.user_image}`}
+                      alt="user"
+                      className="compare-img"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 練習メニュー（1つだけ表示） */}
+            {result.menu?.length > 0 && (
+              <div className="result-card">
+                <h2 className="result-title">今日の練習</h2>
+
+                <p className="menu-title">{result.menu[0]}</p>
+
+                {loadingMenu ? (
+                  <p>読み込み中…</p>
+                ) : (
+                  <p className="menu-detail" style={{ whiteSpace: "pre-line" }}>
+                    {menuDetail}
+                  </p>
                 )}
               </div>
-            ))}
-          </div>
-        )}
+            )}
 
-        {/* AIアドバイス */}
-        {result?.ai_text && (
-          <div className="result-card">
-            <h2 className="result-title">AIコーチからのアドバイス</h2>
-            <p>{result.ai_text}</p>
-          </div>
+            {/* AIアドバイス */}
+            {result.ai_text && (
+              <div className="result-card">
+                <h2 className="result-title">AIコーチ</h2>
+
+                <p style={{ whiteSpace: "pre-line" }}>
+                  {result.ai_text}
+                </p>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
