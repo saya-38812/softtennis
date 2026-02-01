@@ -91,10 +91,8 @@ function App() {
 
         {/* ヘッダー */}
         <header className="app-header">
-          <h1 className="app-title">サーブフォームAIコーチ</h1>
-          <p className="app-subtitle">
-            動画をアップロードして改善点を確認しましょう
-          </p>
+          <span className="tennis-ball-icon">🎾</span>
+          <h1 className="app-title">ソフトテニス サーブフォームAIコーチ</h1>
         </header>
 
         {/* アップロード */}
@@ -125,55 +123,73 @@ function App() {
         {/* 結果表示 */}
         {result && (
           <>
-            {/* スコア */}
-            <p className="score-text">
-              スコア：{result?.diagnosis?.player?.serve_score ?? "-"}点
-            </p>
 
-            {/* フォーム比較 */}
-            {result.ideal_image && result.user_image && (
+            {/* AIアドバイスセクション */}
+            {result.ideal_image && result.user_image && result.message && (
               <div className="result-card">
-                <h2 className="result-title">
-                  フォーム比較（理想 vs あなた）
+                <h2 className="section-title">
+                  <span className="section-icon">ℹ️</span>
+                  AIアドバイス
                 </h2>
-
-                <p className="focus-label">
-                  改善ポイント：{result.focus_label}
-                </p>
-
-                <p className="focus-message">{result.message}</p>
-
-                <div className="compare-grid">
-                  <div className="compare-box">
-                    <h3>理想フォーム</h3>
-                    <img
-                      src={`${API_BASE}${result.ideal_image}`}
-                      alt="ideal"
-                      className="compare-img"
-                    />
+                <p className="ai-advice-message">{result.message}</p>
+                <div className="comparison-panels">
+                  <div className="comparison-panel bad-example">
+                    <div className="panel-header">
+                      <span className="x-icon">✕</span>
+                      <span className="panel-label">悪い例</span>
+                    </div>
+                    <div className="panel-content">
+                      <img
+                        src={`${API_BASE}${result.user_image}`}
+                        alt="bad example"
+                        className="comparison-img"
+                      />
+                      <p className="panel-description">
+                        {result.focus_label && `${result.focus_label}が下がっている...`}
+                      </p>
+                    </div>
                   </div>
-
-                  <div className="compare-box">
-                    <h3>あなたのフォーム</h3>
-                    <img
-                      src={`${API_BASE}${result.user_image}`}
-                      alt="user"
-                      className="compare-img"
-                    />
+                  <div className="comparison-panel good-example">
+                    <div className="panel-header">
+                      <span className="check-icon">✓</span>
+                      <span className="panel-label">良い例</span>
+                    </div>
+                    <div className="panel-content">
+                      <img
+                        src={`${API_BASE}${result.ideal_image}`}
+                        alt="good example"
+                        className="comparison-img"
+                      />
+                      <p className="panel-description good-description">
+                        {result.focus_label && `${result.focus_label}を高く引き上げよう!`}
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* 練習メニュー（1つだけ表示） */}
+            {/* アドバイスセクション */}
+            {result.message && (
+              <div className="result-card">
+                <h2 className="section-title">アドバイス</h2>
+                <p className="advice-text">
+                  {result.message}
+                  {result.focus_label && ` ${result.focus_label}が下がっています。${result.focus_label}をもっと高く引き上げて、打点を高くしましょう!`}
+                </p>
+              </div>
+            )}
+
+            {/* 練習メニューセクション */}
             {result.menu?.length > 0 && (
               <div className="result-card">
-                <h2 className="result-title">今日の練習</h2>
-
+                <h2 className="section-title">
+                  <span className="section-icon">📋</span>
+                  練習メニュー
+                </h2>
                 <p className="menu-title">{result.menu[0]}</p>
-
                 {loadingMenu ? (
-                  <p>読み込み中…</p>
+                  <p className="loading-text">読み込み中…</p>
                 ) : (
                   <p className="menu-detail" style={{ whiteSpace: "pre-line" }}>
                     {menuDetail}

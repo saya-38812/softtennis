@@ -1,7 +1,7 @@
 /* アプリコンテナ */
 .app-container {
   min-height: 100vh;
-  background: linear-gradient(135deg, #f5f7fa 0%, #e8f0f8 100%);
+  background: #ffffff;
   padding: 2rem 1rem;
   display: flex;
   justify-content: center;
@@ -16,16 +16,26 @@
 
 /* ヘッダー */
 .app-header {
-  text-align: center;
-  margin-bottom: 3rem;
-  padding: 2rem 0;
+  background: #4a90e2;
+  padding: 1rem 1.5rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  border-radius: 0;
+}
+
+.tennis-ball-icon {
+  font-size: 1.8rem;
+  display: inline-block;
+  filter: brightness(1.2);
 }
 
 .app-title {
-  font-size: 2.5rem;
+  font-size: 1.2rem;
   font-weight: 600;
-  color: #2c3e50;
-  margin: 0 0 0.5rem 0;
+  color: white;
+  margin: 0;
   letter-spacing: -0.02em;
 }
 
@@ -39,13 +49,13 @@
 /* アップロードセクション */
 .upload-section {
   background: white;
-  border-radius: 16px;
-  padding: 2.5rem;
-  box-shadow: 0 4px 20px rgba(74, 144, 226, 0.08);
-  margin-bottom: 2rem;
+  border-radius: 0;
+  padding: 2rem;
+  margin-bottom: 1.5rem;
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+  border: 1px solid #e0e0e0;
 }
 
 /* ファイル入力 */
@@ -66,18 +76,17 @@
   align-items: center;
   justify-content: center;
   padding: 2.5rem;
-  border: 2px dashed #b8d4f0;
-  border-radius: 12px;
-  background: #f8fbff;
+  border: 2px dashed #ccc;
+  border-radius: 8px;
+  background: #f9f9f9;
   cursor: pointer;
   transition: all 0.3s ease;
   gap: 1rem;
 }
 
 .file-label:hover {
-  border-color: #5b9bd5;
-  background: #f0f7ff;
-  transform: translateY(-2px);
+  border-color: #999;
+  background: #f5f5f5;
 }
 
 .file-label:active {
@@ -100,10 +109,10 @@
 .analyze-button {
   width: 100%;
   padding: 1rem 2rem;
-  background: linear-gradient(135deg, #5b9bd5 0%, #4a90e2 100%);
+  background: #4a90e2;
   color: white;
   border: none;
-  border-radius: 12px;
+  border-radius: 8px;
   font-size: 1.1rem;
   font-weight: 600;
   cursor: pointer;
@@ -112,13 +121,10 @@
   align-items: center;
   justify-content: center;
   gap: 0.75rem;
-  box-shadow: 0 4px 15px rgba(74, 144, 226, 0.3);
 }
 
 .analyze-button:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(74, 144, 226, 0.4);
-  background: linear-gradient(135deg, #6ba3d6 0%, #5b9bd5 100%);
+  background: #3a7bc8;
 }
 
 .analyze-button:active:not(:disabled) {
@@ -177,19 +183,14 @@
 
 .result-card {
   background: white;
-  border-radius: 16px;
-  padding: 2rem;
-  box-shadow: 0 4px 20px rgba(74, 144, 226, 0.08);
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
-}
-
-.result-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 25px rgba(74, 144, 226, 0.12);
+  border-radius: 0;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid #e0e0e0;
 }
 
 .result-title {
-  font-size: 1.5rem;
+  font-size: 1.3rem;
   font-weight: 600;
   color: #2c3e50;
   margin: 0 0 1.5rem 0;
@@ -198,11 +199,42 @@
   gap: 0.75rem;
 }
 
+.section-title {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #2c3e50;
+  margin: 0 0 1rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.section-icon {
+  font-size: 1.3rem;
+  display: inline-block;
+}
+
 .result-icon {
   width: 24px;
   height: 24px;
   color: #5b9bd5;
   flex-shrink: 0;
+}
+
+/* セクションタイトル */
+.section-title {
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: #2c3e50;
+  margin: 0 0 1.5rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.section-icon {
+  font-size: 1.5rem;
+  display: inline-block;
 }
 
 /* 診断結果 */
@@ -408,12 +440,113 @@
   white-space: pre-wrap;
 }
 
+
 .score-text {
   font-size: 18px;
   font-weight: bold;
   margin-top: 8px;
+  margin-bottom: 1rem;
 }
 
+/* サーブシーン切り出し */
+.video-frame-container {
+  width: 100%;
+  margin-top: 1rem;
+}
+
+.main-video-frame {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+}
+
+/* AIアドバイスメッセージ */
+.ai-advice-message {
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: #2c3e50;
+  margin: 0 0 1.5rem 0;
+  padding: 1rem;
+  background: #f9f9f9;
+  border-radius: 8px;
+}
+
+/* 比較パネル */
+.comparison-panels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.comparison-panel {
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid;
+}
+
+.comparison-panel.bad-example {
+  background: #fff5f5;
+  border-color: #fecaca;
+}
+
+.comparison-panel.good-example {
+  background: #f0fdf4;
+  border-color: #86efac;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.bad-example .panel-header {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.good-example .panel-header {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.panel-label {
+  flex: 1;
+}
+
+.panel-content {
+  padding: 1rem;
+  text-align: center;
+}
+
+.comparison-img {
+  width: 100%;
+  border-radius: 8px;
+  margin-bottom: 0.75rem;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.panel-description {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #4a5568;
+  line-height: 1.5;
+}
+
+.good-description {
+  color: #16a34a;
+  font-weight: 500;
+}
+
+.loading-text {
+  color: #6b7c93;
+  font-style: italic;
+  margin: 0;
+}
 
 /* ============================= */
 /* フォーム比較カード */
@@ -428,18 +561,85 @@
 
 .compare-box {
   text-align: center;
+  padding: 1rem;
+  border-radius: 12px;
 }
 
-.compare-title {
-  font-size: 14px;
-  margin-bottom: 8px;
+.bad-example-box {
+  background: #fff5f5;
+  border: 2px solid #fecaca;
+}
+
+.good-example-box {
+  background: #f0fdf4;
+  border: 2px solid #86efac;
+}
+
+.compare-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.compare-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.bad-example-box .compare-header h3 {
+  color: #dc2626;
+}
+
+.good-example-box .compare-header h3 {
+  color: #16a34a;
+}
+
+.x-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: #ef4444;
+  color: white;
+  border-radius: 50%;
   font-weight: bold;
+  font-size: 1rem;
+}
+
+.check-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: #22c55e;
+  color: white;
+  border-radius: 50%;
+  font-weight: bold;
+  font-size: 1rem;
 }
 
 .compare-img {
   width: 100%;
   border-radius: 12px;
   border: 1px solid #ddd;
+  margin-bottom: 0.75rem;
+}
+
+.panel-description {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #4a5568;
+  line-height: 1.5;
+}
+
+.good-description {
+  color: #16a34a;
+  font-weight: 500;
 }
 
 .focus-label {
@@ -451,6 +651,29 @@
   margin-top: 4px;
   color: #444;
   margin-bottom: 12px;
+  font-size: 1.1rem;
+  font-weight: 500;
+}
+
+.advice-text {
+  font-size: 1rem;
+  color: #4a5568;
+  line-height: 1.8;
+  margin: 0;
+}
+
+.menu-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #2c3e50;
+  margin: 0 0 1rem 0;
+}
+
+.menu-detail {
+  font-size: 1rem;
+  color: #4a5568;
+  line-height: 1.8;
+  margin: 0;
 }
 
 
@@ -460,8 +683,16 @@
     padding: 1rem 0.5rem;
   }
 
+  .app-header {
+    padding: 1rem 1.5rem;
+  }
+
   .app-title {
-    font-size: 2rem;
+    font-size: 1.2rem;
+  }
+
+  .tennis-ball-icon {
+    font-size: 1.5rem;
   }
 
   .app-subtitle {
@@ -478,5 +709,18 @@
 
   .file-label {
     padding: 2rem 1.5rem;
+  }
+
+  .comparison-panels {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .section-title {
+    font-size: 1.1rem;
+  }
+
+  .section-icon {
+    font-size: 1.3rem;
   }
 }
