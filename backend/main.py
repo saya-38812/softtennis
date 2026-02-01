@@ -8,9 +8,6 @@ from ai.video_pose import analyze_video
 from ai.coach_generator import generate_menu_detail
 
 from fastapi.staticfiles import StaticFiles
-
-
-
 # .envファイルから環境変数を読み込む（アプリケーション起動時）
 load_dotenv()
 
@@ -26,6 +23,7 @@ app.add_middleware(
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+os.makedirs("outputs", exist_ok=True)
 app.mount("/outputs", StaticFiles(directory="outputs"), name="outputs")
 
 class MenuDetailRequest(BaseModel):
