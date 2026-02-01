@@ -135,8 +135,8 @@ function App() {
                 <div className="comparison-panels">
                   <div className="comparison-panel bad-example">
                     <div className="panel-header">
-                      <span className="x-icon">✕</span>
-                      <span className="panel-label">悪い例</span>
+                      <span className="x-icon"></span>
+                      <span className="panel-label">あなた</span>
                     </div>
                     <div className="panel-content">
                       <img
