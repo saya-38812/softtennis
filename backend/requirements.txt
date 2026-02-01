@@ -8,3 +8,6 @@ openai
 opencv-python-headless
 mediapipe
 numpy
+
+ultralytics==8.1.0
+opencv-python-headless
