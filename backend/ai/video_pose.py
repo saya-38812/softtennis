@@ -51,6 +51,7 @@ FOCUS_MESSAGES = {
 
 FOCUS_PRIORITY = list(FOCUS_LABELS.keys())
 
+# 赤丸をつけるMediaPipe landmark（右利き）
 FOCUS_MARK_LANDMARK = {
     "elbow_angle": 14,
     "impact_height": 16,
@@ -68,6 +69,7 @@ FOCUS_MARK_LANDMARK = {
 # ================================
 
 def pick_focus(weakness):
+    """weaknessの中で最優先を1つ選ぶ"""
     for k in FOCUS_PRIORITY:
         if weakness.get(k) != "ok":
             return k
@@ -75,10 +77,12 @@ def pick_focus(weakness):
 
 
 def to_pixel(p, w, h):
+    """0-1座標 → ピクセル変換"""
     return int(p[0] * w), int(p[1] * h)
 
 
 def save_frame(video_path, idx, out_path):
+    """指定フレームを画像として保存"""
     cap = cv2.VideoCapture(video_path)
     cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
 
@@ -86,7 +90,7 @@ def save_frame(video_path, idx, out_path):
     cap.release()
 
     if not ret:
-        logging.warning("フレーム取得失敗")
+        logging.warning("フレーム取得に失敗しました")
         return None
 
     cv2.imwrite(out_path, frame)
@@ -94,22 +98,20 @@ def save_frame(video_path, idx, out_path):
 
 
 def smooth(x, w=5):
+    """移動平均でノイズ除去"""
     return np.convolve(x, np.ones(w) / w, mode="same")
 
 
 # ================================
-# 🎯インパクト推定（最強改善版）
+# 最強インパクト推定（最高点→下降開始）
 # ================================
 
 def detect_best_contact_frame(landmarks_3d):
     """
     インパクト推定：
 
-    ✅右手首が最高点になる瞬間
-    ＋
-    ✅速度が最大になる瞬間
-    ＋
-    ✅最高点の少し前を採用（当たる瞬間）
+    ①右手首が最高点になる
+    ②そこから下降し始める瞬間がインパクト
     """
 
     n = len(landmarks_3d)
@@ -119,34 +121,31 @@ def detect_best_contact_frame(landmarks_3d):
     WRIST = 16
 
     wrist_y = []
-    wrist_speed = []
+    for i in range(n):
+        wrist_y.append(landmarks_3d[i][WRIST][1])
 
-    for i in range(1, n):
-        prev = landmarks_3d[i - 1][WRIST]
-        curr = landmarks_3d[i][WRIST]
-
-        wrist_y.append(curr[1])  # 高さ（小さいほど上）
-        wrist_speed.append(np.linalg.norm(curr - prev))
-
-    wrist_y = np.array(wrist_y)
-    wrist_speed = np.array(wrist_speed)
-
-    wrist_y = smooth(wrist_y)
-    wrist_speed = smooth(wrist_speed)
+    wrist_y = smooth(np.array(wrist_y), 5)
 
     # ①最高点（最小y）
-    highest_idx = int(np.argmin(wrist_y))
+    peak = int(np.argmin(wrist_y))
 
-    # ②速度最大
-    speed_idx = int(np.argmax(wrist_speed))
+    # ②下降開始を探す
+    search_end = min(n - 1, peak + 8)
 
-    # ③合成（最高点寄りにする）
-    final_idx = int((highest_idx * 0.7) + (speed_idx * 0.3))
+    best = peak
 
-    # 🎯インパクトは最高点の「少し前」
-    final_idx = max(0, final_idx - 2)
+    for i in range(peak + 1, search_end):
+        diff = wrist_y[i] - wrist_y[i - 1]
 
-    return final_idx
+        # 上昇→下降に切り替わった瞬間
+        if diff > 0:
+            best = i
+            break
+
+    # 🎯接触はその1フレ後が多い
+    best = min(n - 1, best + 1)
+
+    return best
 
 
 # ================================
@@ -157,6 +156,7 @@ def analyze_video(file_path):
     BASE_DIR = os.path.dirname(__file__)
     success_path = os.path.join(BASE_DIR, "success.mp4")
 
+    # 骨格抽出
     success_3d = extract_pose_landmarks(success_path)
     target_3d = extract_pose_landmarks(file_path)
 
@@ -164,7 +164,10 @@ def analyze_video(file_path):
     target_seq = normalize_pose(target_3d)
 
     if len(success_seq) == 0 or len(target_seq) == 0:
-        return {"menu": ["基本フォーム練習"], "ai_text": "解析できませんでした"}
+        return {
+            "menu": ["基本フォーム練習"],
+            "ai_text": "解析できませんでした",
+        }
 
     # ----------------
     # スコア計算
@@ -177,7 +180,7 @@ def analyze_video(file_path):
     score = int(max(0, min(100, 100 - np.mean(dists) * 28)))
 
     # ----------------
-    # 指標計算
+    # 全指標計算（残す）
     # ----------------
     is_right = True
 
