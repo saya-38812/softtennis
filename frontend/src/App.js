@@ -40,7 +40,6 @@ function App() {
 
     try {
       const res = await axios.post(`${API_BASE}/analyze`, formData, {
-        headers: { "Content-Type": "multipart/form-data" },
         timeout: 5 * 60 * 1000,
       });
 
