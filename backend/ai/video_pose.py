@@ -206,53 +206,57 @@ def analyze_video(file_path):
         menu = ["基本フォーム練習"]
 
     # --------------------------
-    # 図解画像生成（ideal/user）
-    # --------------------------
-    output_dir = os.path.join(BASE_DIR, "..", "outputs")
-    os.makedirs(output_dir, exist_ok=True)
+# 図解画像生成（ideal/user）
+# --------------------------
 
-    ideal_img_path = os.path.join(output_dir, "ideal.png")
-    user_img_path = os.path.join(output_dir, "user.png")
+output_dir = os.path.join(BASE_DIR, "..", "outputs")
+os.makedirs(output_dir, exist_ok=True)
 
-    user_idx = int(len(target_landmarks_3d) * 0.7)
-    ideal_idx = int(len(success_landmarks_3d) * 0.7)
+ideal_img_path = os.path.join(output_dir, "ideal.png")
+user_img_path = os.path.join(output_dir, "user.png")
 
-    landmark_id = FOCUS_MARK_LANDMARK.get(focus, 14)
+# インパクト推定（手首速度最大）
+user_idx = detect_impact_frame_by_wrist_speed(target_landmarks_3d, True)
+ideal_idx = detect_impact_frame_by_wrist_speed(success_landmarks_3d, True)
 
-    user_point = target_landmarks_3d[user_idx][landmark_id]
-    ideal_point = success_landmarks_3d[ideal_idx][landmark_id]
+landmark_id = FOCUS_MARK_LANDMARK.get(focus, 14)
 
-    cap = cv2.VideoCapture(file_path)
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    cap.release()
+user_point = target_landmarks_3d[user_idx][landmark_id]
+ideal_point = success_landmarks_3d[ideal_idx][landmark_id]
 
-    ux, uy = to_pixel(user_point, width, height)
-    ix, iy = to_pixel(ideal_point, width, height)
+# 動画サイズ取得
+cap = cv2.VideoCapture(file_path)
+width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+cap.release()
 
-    # 理想画像（緑丸だけ）
-    save_frame(success_path, ideal_idx, ideal_img_path)
-    ideal_frame = cv2.imread(ideal_img_path)
-    cv2.circle(ideal_frame, (ix, iy), 18, (0, 255, 0), -1)
-    cv2.imwrite(ideal_img_path, ideal_frame)
+ux, uy = to_pixel(user_point, width, height)
+ix, iy = to_pixel(ideal_point, width, height)
 
-    # あなた画像（赤＋緑＋矢印）
-    save_frame(file_path, user_idx, user_img_path)
-    user_frame = cv2.imread(user_img_path)
+# 理想画像（緑丸）
+save_frame(success_path, ideal_idx, ideal_img_path)
+ideal_frame = cv2.imread(ideal_img_path)
+cv2.circle(ideal_frame, (ix, iy), 18, (0, 255, 0), -1)
+cv2.imwrite(ideal_img_path, ideal_frame)
 
-    cv2.circle(user_frame, (ux, uy), 18, (0, 0, 255), -1)
-    cv2.circle(user_frame, (ix, iy), 18, (0, 255, 0), -1)
+# あなた画像（赤＋緑＋矢印）
+save_frame(file_path, user_idx, user_img_path)
+user_frame = cv2.imread(user_img_path)
 
-    cv2.arrowedLine(
-        user_frame,
-        (ux, uy),
-        (ix, iy),
-        (255, 255, 255),
-        4,
-        tipLength=0.3,
-    )
+cv2.circle(user_frame, (ux, uy), 18, (0, 0, 255), -1)
+cv2.circle(user_frame, (ix, iy), 18, (0, 255, 0), -1)
 
-    cv2.imwrite(user_img_path, user_frame)
+cv2.arrowedLine(
+    user_frame,
+    (ux, uy),
+    (ix, iy),
+    (255, 255, 255),
+    4,
+    tipLength=0.3,
+)
+
+cv2.imwrite(user_img_path, user_frame)
+
 
     # --------------------------
     # AI文章生成
