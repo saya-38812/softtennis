@@ -28,7 +28,7 @@ function App() {
     formData.append("file", file);
     try {
       const res = await axios.post(
-        "${API_BASE}/analyze",
+        '${API_BASE}/analyze',
         formData,
         {
           headers: { "Content-Type": "multipart/form-data" },
@@ -58,7 +58,7 @@ function App() {
         // 詳細を取得
         setLoadingDetails(prev => ({ ...prev, [firstMenu]: true }));
         axios.post(
-          "${API_BASE}/menu-detail",
+          '${API_BASE}/menu-detail',
           {
             menu_name: firstMenu,
             diagnosis: result.diagnosis
@@ -108,7 +108,7 @@ function App() {
     setLoadingDetails(prev => ({ ...prev, [menuName]: true }));
     try {
       const res = await axios.post(
-        "${API_BASE}/menu-detail",
+        '${API_BASE}/menu-detail',
         {
           menu_name: menuName,
           diagnosis: result.diagnosis
@@ -137,7 +137,7 @@ function App() {
     <div className="app-container">
       <div className="app-content">
         <header className="app-header">
-          <h1 className="app-title">サーブ診断アプリ</h1>
+          <h1 className="app-title">ソフトテニス　サーブフォームAIコーチ</h1>
           <p className="app-subtitle">動画をアップロードして、あなたのサーブを分析しましょう</p>
         </header>
 
@@ -190,6 +190,54 @@ function App() {
           </div>
         )}
 
+<p className="score-text">
+  スコア：{result.diagnosis.player.serve_score}点
+</p>
+
+
+              {/* ============================= */}
+{/* フォーム比較カード（MVP） */}
+{/* ============================= */}
+{result.ideal_image && result.user_image && (
+  <div className="result-card">
+    <h2 className="result-title">
+      フォーム比較（理想 vs あなた）
+    </h2>
+
+    {/* 改善ポイント */}
+    <p className="focus-label">
+      改善ポイント：{result.focus_label}
+    </p>
+    <p className="focus-message">
+      {result.message}
+    </p>
+
+    {/* 左右比較 */}
+    <div className="compare-grid">
+      {/* 理想フォーム */}
+      <div className="compare-box">
+        <h3 className="compare-title">理想フォーム</h3>
+        <img
+          src={`${API_BASE}${result.ideal_image}`}
+          alt="ideal form"
+          className="compare-img"
+        />
+      </div>
+
+      {/* あなたフォーム */}
+      <div className="compare-box">
+        <h3 className="compare-title">あなたのフォーム</h3>
+        <img
+          src={`${API_BASE}${result.user_image}`}
+          alt="your form"
+          className="compare-img"
+        />
+      </div>
+    </div>
+  </div>
+)}
+
+
         {result && (
           <div className="results-section">
             <div className="result-card">
@@ -200,9 +248,6 @@ function App() {
                 </svg>
                 診断結果
               </h2>
-              <div className="diagnosis-content">
-                <pre className="diagnosis-json">{JSON.stringify(result.diagnosis, null, 2)}</pre>
-              </div>
             </div>
 
             {Array.isArray(result.menu) && result.menu.length > 0 && (

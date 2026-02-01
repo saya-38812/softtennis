@@ -408,6 +408,52 @@
   white-space: pre-wrap;
 }
 
+.score-text {
+  font-size: 18px;
+  font-weight: bold;
+  margin-top: 8px;
+}
+
+
+/* ============================= */
+/* フォーム比較カード */
+/* ============================= */
+
+.compare-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.compare-box {
+  text-align: center;
+}
+
+.compare-title {
+  font-size: 14px;
+  margin-bottom: 8px;
+  font-weight: bold;
+}
+
+.compare-img {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid #ddd;
+}
+
+.focus-label {
+  font-weight: bold;
+  margin-top: 8px;
+}
+
+.focus-message {
+  margin-top: 4px;
+  color: #444;
+  margin-bottom: 12px;
+}
+
+
 /* レスポンシブデザイン */
 @media (max-width: 768px) {
   .app-container {
