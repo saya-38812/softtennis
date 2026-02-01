@@ -3,27 +3,22 @@ import logging
 import numpy as np
 import cv2
 
+from ultralytics import YOLO
+
 from .video_pose_analyzer import extract_pose_landmarks
 from .normalize_pose import normalize_pose
-from .coach_ai_utils import generate_menu, safe_mean
-from .coach_generator import generate_ai_menu
-
+from .coach_ai_utils import safe_mean
 from .angle_utils import (
-    calculate_shoulder_angle,
     calculate_elbow_angle,
-    calculate_wrist_angle,
-    calculate_shoulder_tilt,
-    calculate_waist_rotation,
-    calculate_waist_rotation_speed,
-    calculate_body_sway,
-    calculate_impact_height,
-    calculate_impact_forward,
-    calculate_toss_sync,
-    calculate_impact_left_right,
-    calculate_weight_left_right,
 )
 
 logging.basicConfig(level=logging.INFO)
+
+# ================================
+# YOLO（最軽量）ロード
+# ================================
+yolo_model = YOLO("yolov8n.pt")  # Renderでも動く最軽量
+
 
 # ================================
 # focus辞書（トップ1だけ）
@@ -65,87 +60,129 @@ FOCUS_MARK_LANDMARK = {
     "weight_left_right": 26,
 }
 
+
 # ================================
 # Utility
 # ================================
 
-def pick_focus(weakness):
-    for k in FOCUS_PRIORITY:
-        if weakness.get(k) != "ok":
-            return k
-    return "impact_height"
+def pick_focus(weakness_dict):
+    for key in FOCUS_PRIORITY:
+        if weakness_dict.get(key) != "ok":
+            return key
+    return "elbow_angle"
 
 
-def to_pixel(p, w, h):
-    return int(p[0] * w), int(p[1] * h)
+def to_pixel(point, width, height):
+    return int(point[0] * width), int(point[1] * height)
 
 
-def save_frame(video_path, idx, out_path):
+def save_frame(video_path, frame_index, output_path):
     cap = cv2.VideoCapture(video_path)
-    cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+    cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
+
     ret, frame = cap.read()
     cap.release()
-    if ret:
-        cv2.imwrite(out_path, frame)
-        return frame
+
+    if not ret:
+        return None
+
+    cv2.imwrite(output_path, frame)
+    return output_path
+
+
+# ================================
+# 骨格版インパクト推定（候補）
+# ================================
+
+def detect_impact_frame_pose(landmarks_3d):
+    if len(landmarks_3d) < 10:
+        return int(len(landmarks_3d) * 0.7)
+
+    WRIST_ID = 16
+
+    speeds = []
+    for i in range(1, len(landmarks_3d)):
+        prev = landmarks_3d[i - 1][WRIST_ID]
+        curr = landmarks_3d[i][WRIST_ID]
+        speeds.append(np.linalg.norm(curr - prev))
+
+    peak_idx = int(np.argmax(speeds))
+
+    # 前後で最も高い打点
+    window = 5
+    start = max(0, peak_idx - window)
+    end = min(len(landmarks_3d), peak_idx + window)
+
+    best_idx = peak_idx
+    best_y = 9999
+
+    for i in range(start, end):
+        y = landmarks_3d[i][WRIST_ID][1]
+        if y < best_y:
+            best_y = y
+            best_idx = i
+
+    return best_idx
+
+
+# ================================
+# ラケット検出（YOLO）
+# ================================
+
+def detect_racket_center(frame):
+    """
+    YOLOでラケット検出（sports racket=43）
+    """
+    results = yolo_model(frame, verbose=False)
+
+    for r in results:
+        for box in r.boxes:
+            cls = int(box.cls[0])
+            if cls == 43:
+                x1, y1, x2, y2 = box.xyxy[0]
+                cx = int((x1 + x2) / 2)
+                cy = int((y1 + y2) / 2)
+                return cx, cy
+
     return None
 
 
-def smooth(x, w=5):
-    return np.convolve(x, np.ones(w) / w, mode="same")
-
-
 # ================================
-# 本気インパクト推定（固定）
+# Render最適：数フレームだけラケット検出
 # ================================
 
-def detect_impact_frame_strict(landmarks_3d):
+def refine_impact_with_racket(video_path, impact_idx):
     """
-    インパクト推定：
-    ・手首速度最大
-    ・打点高さ最大
-    ・肘伸展最大
-    を合成して決定
+    骨格推定impact_idxの前後±3フレームだけYOLOを使う
     """
+    cap = cv2.VideoCapture(video_path)
 
-    n = len(landmarks_3d)
-    if n < 15:
-        return int(n * 0.7)
+    best_idx = impact_idx
+    best_speed = 0
+    prev_pos = None
 
-    WRIST, ELBOW, SHOULDER = 16, 14, 12
+    for offset in range(-3, 4):
+        idx = impact_idx + offset
+        if idx < 0:
+            continue
 
-    speeds, heights, elbows = [], [], []
+        cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+        ret, frame = cap.read()
+        if not ret:
+            continue
 
-    for i in range(1, n):
-        prev = landmarks_3d[i - 1][WRIST]
-        curr = landmarks_3d[i][WRIST]
+        pos = detect_racket_center(frame)
 
-        speeds.append(np.linalg.norm(curr - prev))
-        heights.append(-curr[1])
+        if pos and prev_pos:
+            speed = np.linalg.norm(np.array(pos) - np.array(prev_pos))
+            if speed > best_speed:
+                best_speed = speed
+                best_idx = idx
 
-        s = landmarks_3d[i][SHOULDER]
-        e = landmarks_3d[i][ELBOW]
-        w = landmarks_3d[i][WRIST]
+        prev_pos = pos
 
-        v1 = s - e
-        v2 = w - e
-        cos = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2) + 1e-6)
-        angle = np.degrees(np.arccos(np.clip(cos, -1, 1)))
-        elbows.append(angle)
-
-    speeds = smooth(np.array(speeds))
-    heights = smooth(np.array(heights))
-    elbows = smooth(np.array(elbows))
-
-    def norm(x):
-        return (x - x.min()) / (x.max() - x.min() + 1e-6)
-
-    score = norm(speeds) * 0.5 + norm(heights) * 0.3 + norm(elbows) * 0.2
-
-    start = int(len(score) * 0.4)
-    idx = start + np.argmax(score[start:])
-
-    return idx
+    cap.release()
+    return best_idx
 
 
 # ================================
@@ -156,147 +193,125 @@ def analyze_video(file_path):
     BASE_DIR = os.path.dirname(__file__)
     success_path = os.path.join(BASE_DIR, "success.mp4")
 
-    success_3d = extract_pose_landmarks(success_path)
-    target_3d = extract_pose_landmarks(file_path)
+    # landmark取得
+    success_landmarks_3d = extract_pose_landmarks(success_path)
+    target_landmarks_3d = extract_pose_landmarks(file_path)
 
-    success_seq = normalize_pose(success_3d)
-    target_seq = normalize_pose(target_3d)
+    success_seq = normalize_pose(success_landmarks_3d)
+    target_seq = normalize_pose(target_landmarks_3d)
 
-    if len(success_seq) == 0 or len(target_seq) == 0:
-        return {"menu": ["基本フォーム練習"], "ai_text": "解析できませんでした"}
+    if len(target_seq) == 0 or len(success_seq) == 0:
+        return {
+            "diagnosis": None,
+            "menu": ["基本フォーム練習"],
+            "ai_text": "動画を解析できませんでした。",
+        }
 
-    # ----------------
+    # ================================
     # スコア計算
-    # ----------------
-    dists = []
+    # ================================
+    frame_scores = []
+    frame_diffs = []
+
     for t in target_seq:
-        d = np.linalg.norm(success_seq - t, axis=(1, 2))
-        dists.append(np.min(d))
+        dists = np.linalg.norm(success_seq - t, axis=(1, 2))
+        min_idx = np.argmin(dists)
+        frame_scores.append(dists[min_idx])
+        frame_diffs.append(success_seq[min_idx] - t)
 
-    score = int(max(0, min(100, 100 - np.mean(dists) * 28)))
+    frame_diffs = np.array(frame_diffs)
 
-    # ----------------
-    # 全指標計算
-    # ----------------
-    is_right = True
-    fps = 30.0
+    mean_dist = np.mean(frame_scores)
+    score = int(max(0, min(100, 100 - mean_dist * 28)))
 
-    shoulder_diff = np.mean(calculate_shoulder_angle(target_seq, is_right)) - np.mean(
-        calculate_shoulder_angle(success_seq, is_right)
-    )
-    elbow_diff = np.mean(calculate_elbow_angle(target_seq, is_right)) - np.mean(
-        calculate_elbow_angle(success_seq, is_right)
-    )
-    wrist_diff = np.mean(calculate_wrist_angle(target_seq, is_right)) - np.mean(
-        calculate_wrist_angle(success_seq, is_right)
-    )
+    # ================================
+    # 指標（残す）
+    # ================================
+    impact_height = safe_mean(frame_diffs, 0, 1)
 
-    waist_rot_diff = np.mean(calculate_waist_rotation(target_seq, is_right)) - np.mean(
-        calculate_waist_rotation(success_seq, is_right)
-    )
+    success_elbow = calculate_elbow_angle(success_seq, True)
+    target_elbow = calculate_elbow_angle(target_seq, True)
+    elbow_angle_diff = np.mean(target_elbow) - np.mean(success_elbow)
 
-    sway_diff = np.mean(calculate_body_sway(target_seq)) - np.mean(
-        calculate_body_sway(success_seq)
-    )
-
-    impact_h_diff = np.mean(calculate_impact_height(target_seq, is_right)) - np.mean(
-        calculate_impact_height(success_seq, is_right)
-    )
-
-    impact_f_diff = np.mean(calculate_impact_forward(target_seq, is_right)) - np.mean(
-        calculate_impact_forward(success_seq, is_right)
-    )
-
-    toss_diff = np.mean(calculate_toss_sync(target_seq, is_right)) - np.mean(
-        calculate_toss_sync(success_seq, is_right)
-    )
-
-    lr_diff = np.mean(calculate_impact_left_right(target_seq, is_right)) - np.mean(
-        calculate_impact_left_right(success_seq, is_right)
-    )
-
-    weight_lr_diff = np.mean(calculate_weight_left_right(target_seq)) - np.mean(
-        calculate_weight_left_right(success_seq)
-    )
-
-    # ----------------
-    # weakness判定
-    # ----------------
     weakness = {
-        "elbow_angle": "too_bent" if elbow_diff < -20 else "ok",
-        "impact_height": "low" if impact_h_diff < -0.15 else "ok",
-        "shoulder_angle": "too_open" if shoulder_diff > 15 else "ok",
-        "waist_rotation": "insufficient" if waist_rot_diff < -20 else "ok",
-        "body_sway": "unstable" if sway_diff > 0.03 else "ok",
-        "impact_forward": "too_back" if impact_f_diff < -0.1 else "ok",
-        "toss_sync": "out_of_sync" if abs(toss_diff) > 0.2 else "ok",
-        "impact_left_right": "unstable" if abs(lr_diff) > 0.05 else "ok",
-        "weight_left_right": "unbalanced" if abs(weight_lr_diff) > 0.03 else "ok",
+        "elbow_angle": "too_bent" if elbow_angle_diff < -20 else "ok",
+        "impact_height": "low" if impact_height < -0.15 else "ok",
+    }
+
+    diagnosis = {
+        "player": {
+            "age": 13,
+            "hand": "right",
+            "serve_score": score,
+        },
+        "weakness": weakness,
+        "raw_values": {
+            "elbow_angle_diff": round(float(elbow_angle_diff), 2),
+            "impact_height_diff": round(float(impact_height), 3),
+        }
     }
 
     focus = pick_focus(weakness)
 
-    # ----------------
-    # メニュー短く1個だけ
-    # ----------------
-    menu = [f"{FOCUS_LABELS[focus]}を改善する素振り練習"]
+    # ================================
+    # インパクト推定（骨格→ラケット補正）
+    # ================================
+    user_idx = detect_impact_frame_pose(target_landmarks_3d)
+    user_idx = refine_impact_with_racket(file_path, user_idx)
 
-    # ----------------
-    # インパクト画像生成
-    # ----------------
-    out_dir = os.path.join(BASE_DIR, "..", "outputs")
-    os.makedirs(out_dir, exist_ok=True)
+    ideal_idx = detect_impact_frame_pose(success_landmarks_3d)
 
-    user_idx = detect_impact_frame_strict(target_3d)
-    ideal_idx = detect_impact_frame_strict(success_3d)
+    # ================================
+    # 図解生成
+    # ================================
+    output_dir = os.path.join(BASE_DIR, "..", "outputs")
+    os.makedirs(output_dir, exist_ok=True)
 
-    lid = FOCUS_MARK_LANDMARK[focus]
+    ideal_img_path = os.path.join(output_dir, "ideal.png")
+    user_img_path = os.path.join(output_dir, "user.png")
+
+    landmark_id = FOCUS_MARK_LANDMARK.get(focus, 16)
+
+    user_point = target_landmarks_3d[user_idx][landmark_id]
+    ideal_point = success_landmarks_3d[ideal_idx][landmark_id]
 
     cap = cv2.VideoCapture(file_path)
-    w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     cap.release()
 
-    ux, uy = to_pixel(target_3d[user_idx][lid], w, h)
-    ix, iy = to_pixel(success_3d[ideal_idx][lid], w, h)
+    ux, uy = to_pixel(user_point, width, height)
+    ix, iy = to_pixel(ideal_point, width, height)
 
-    ideal_img = save_frame(success_path, ideal_idx, os.path.join(out_dir, "ideal.png"))
-    if ideal_img is not None:
-        cv2.circle(ideal_img, (ix, iy), 18, (0, 255, 0), -1)
-        cv2.imwrite(os.path.join(out_dir, "ideal.png"), ideal_img)
+    # 理想
+    save_frame(success_path, ideal_idx, ideal_img_path)
+    ideal_frame = cv2.imread(ideal_img_path)
+    cv2.circle(ideal_frame, (ix, iy), 18, (0, 255, 0), -1)
+    cv2.imwrite(ideal_img_path, ideal_frame)
 
-    user_img = save_frame(file_path, user_idx, os.path.join(out_dir, "user.png"))
-    if user_img is not None:
-        cv2.circle(user_img, (ux, uy), 18, (0, 0, 255), -1)
-        cv2.circle(user_img, (ix, iy), 18, (0, 255, 0), -1)
-        cv2.arrowedLine(user_img, (ux, uy), (ix, iy), (255, 255, 255), 4)
-        cv2.imwrite(os.path.join(out_dir, "user.png"), user_img)
+    # あなた
+    save_frame(file_path, user_idx, user_img_path)
+    user_frame = cv2.imread(user_img_path)
 
-    # ----------------
-    # AI文章（短く）
-    # ----------------
-    ai_text = f"改善ポイントは「{FOCUS_LABELS[focus]}」です。まず1つだけ意識しましょう！"
+    cv2.circle(user_frame, (ux, uy), 18, (0, 0, 255), -1)
+    cv2.circle(user_frame, (ix, iy), 18, (0, 255, 0), -1)
+    cv2.arrowedLine(user_frame, (ux, uy), (ix, iy), (255, 255, 255), 4)
+
+    cv2.imwrite(user_img_path, user_frame)
+
+    # ================================
+    # MVP文章
+    # ================================
+    ai_text = f"改善ポイントは「{FOCUS_LABELS[focus]}」です。まずは1つだけ意識しましょう！"
 
     return {
-        "diagnosis": {
-            "player": {"age": 13, "hand": "right", "serve_score": score},
-            "weakness": weakness,
-            "raw_values": {
-                "elbow_angle_diff": elbow_diff,
-                "impact_height_diff": impact_h_diff,
-                "shoulder_angle_diff": shoulder_diff,
-                "waist_rotation_diff": waist_rot_diff,
-                "body_sway_diff": sway_diff,
-                "impact_forward_diff": impact_f_diff,
-                "toss_sync_diff": toss_diff,
-                "impact_left_right_diff": lr_diff,
-                "weight_left_right_diff": weight_lr_diff,
-            },
-        },
-        "menu": menu,
+        "diagnosis": diagnosis,
+        "menu": ["肘を高く固定する素振り練習"],
         "ai_text": ai_text,
+
         "ideal_image": "/outputs/ideal.png",
         "user_image": "/outputs/user.png",
-        "focus_label": FOCUS_LABELS[focus],
-        "message": FOCUS_MESSAGES[focus],
+
+        "focus_label": FOCUS_LABELS.get(focus, focus),
+        "message": FOCUS_MESSAGES.get(focus),
     }
