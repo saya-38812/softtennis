@@ -5,10 +5,12 @@ import cv2
 
 from .video_pose_analyzer import extract_pose_landmarks
 from .normalize_pose import normalize_pose
-from .coach_ai_utils import safe_mean
+from .coach_ai_utils import generate_menu, safe_mean
 from .coach_generator import generate_ai_menu
 
-from .angle_utils import calculate_elbow_angle
+from .angle_utils import (
+    calculate_elbow_angle,
+)
 
 logging.basicConfig(level=logging.INFO)
 
@@ -31,10 +33,10 @@ FOCUS_PRIORITY = [
     "impact_height",
 ]
 
-# 赤丸をつけるMediaPipe landmark（右利き固定）
+# 赤丸をつけるMediaPipe landmark（右利き）
 FOCUS_MARK_LANDMARK = {
-    "elbow_angle": 14,     # 右肘
-    "impact_height": 16,   # 右手首
+    "elbow_angle": 14,      # 右肘
+    "impact_height": 16,    # 右手首
 }
 
 
@@ -66,28 +68,53 @@ def save_frame(video_path, frame_index, output_path):
     cap.release()
 
     if not ret:
+        logging.warning("フレーム取得に失敗しました")
         return None
 
     cv2.imwrite(output_path, frame)
     return output_path
 
 
-def detect_impact_frame_by_wrist_speed(landmarks_3d):
+# ================================
+# インパクト推定（完成版）
+# ================================
+
+def detect_impact_frame(landmarks_3d, is_right_handed=True):
     """
-    インパクトを「右手首速度が最大の瞬間」で推定する
+    インパクト推定：
+    ① 手首速度が最大になる瞬間を探す
+    ② その前後±5フレームで「最も高い打点」を選ぶ
     """
-    if len(landmarks_3d) < 5:
+
+    if len(landmarks_3d) < 10:
         return int(len(landmarks_3d) * 0.7)
 
-    WRIST_ID = 16  # 右手首固定
+    WRIST_ID = 16 if is_right_handed else 15
 
+    # ① 手首速度を計算
     speeds = []
     for i in range(1, len(landmarks_3d)):
         prev = landmarks_3d[i - 1][WRIST_ID]
         curr = landmarks_3d[i][WRIST_ID]
         speeds.append(np.linalg.norm(curr - prev))
 
-    return int(np.argmax(speeds))
+    peak_idx = int(np.argmax(speeds))
+
+    # ② ピーク前後で最も高い打点を探す
+    window = 5
+    start = max(0, peak_idx - window)
+    end = min(len(landmarks_3d), peak_idx + window)
+
+    best_idx = peak_idx
+    best_y = 9999  # yは小さいほど上
+
+    for i in range(start, end):
+        y = landmarks_3d[i][WRIST_ID][1]
+        if y < best_y:
+            best_y = y
+            best_idx = i
+
+    return best_idx
 
 
 # ================================
@@ -98,9 +125,7 @@ def analyze_video(file_path):
     BASE_DIR = os.path.dirname(__file__)
     success_path = os.path.join(BASE_DIR, "success.mp4")
 
-    # --------------------------
     # landmark取得
-    # --------------------------
     success_landmarks_3d = extract_pose_landmarks(success_path)
     target_landmarks_3d = extract_pose_landmarks(file_path)
 
@@ -121,27 +146,33 @@ def analyze_video(file_path):
     # スコア計算（距離ベース）
     # --------------------------
     frame_scores = []
+    frame_diffs = []
 
     for t in target_seq:
         dists = np.linalg.norm(success_seq - t, axis=(1, 2))
-        frame_scores.append(np.min(dists))
+        min_idx = np.argmin(dists)
+        frame_scores.append(dists[min_idx])
+        frame_diffs.append(success_seq[min_idx] - t)
+
+    frame_diffs = np.array(frame_diffs)
 
     mean_dist = np.mean(frame_scores)
     score = int(max(0, min(100, 100 - mean_dist * 28)))
 
     # --------------------------
-    # MVP弱点：肘＋打点だけ
+    # 基本弱点（MVP）
     # --------------------------
-    is_right_handed = True
+    impact_height = safe_mean(frame_diffs, 0, 1)
 
-    success_elbow = calculate_elbow_angle(success_seq, is_right_handed)
-    target_elbow = calculate_elbow_angle(target_seq, is_right_handed)
+    # 肘角度差
+    success_elbow = calculate_elbow_angle(success_seq, True)
+    target_elbow = calculate_elbow_angle(target_seq, True)
 
     elbow_angle_diff = np.mean(target_elbow) - np.mean(success_elbow)
 
-    # 打点高さ（簡易）
-    impact_height = safe_mean(target_seq, 0, 1)
-
+    # --------------------------
+    # weakness判定（トップ2だけ）
+    # --------------------------
     weakness = {
         "elbow_angle": "too_bent" if elbow_angle_diff < -20 else "ok",
         "impact_height": "low" if impact_height < -0.15 else "ok",
@@ -166,12 +197,12 @@ def analyze_video(file_path):
     focus = pick_focus(weakness)
 
     # --------------------------
-    # 練習メニュー（1つだけ）
+    # メニュー生成（短く1個だけ）
     # --------------------------
-    menu = [f"{FOCUS_LABELS[focus]}を意識した素振り（10回×3）"]
+    menu = ["肘を高く固定する素振り練習"]
 
     # --------------------------
-    # 図解画像生成（丸＋矢印）
+    # 図解画像生成（インパクト）
     # --------------------------
     output_dir = os.path.join(BASE_DIR, "..", "outputs")
     os.makedirs(output_dir, exist_ok=True)
@@ -180,10 +211,10 @@ def analyze_video(file_path):
     user_img_path = os.path.join(output_dir, "user.png")
 
     # インパクト推定
-    user_idx = detect_impact_frame_by_wrist_speed(target_landmarks_3d)
-    ideal_idx = detect_impact_frame_by_wrist_speed(success_landmarks_3d)
+    user_idx = detect_impact_frame(target_landmarks_3d, True)
+    ideal_idx = detect_impact_frame(success_landmarks_3d, True)
 
-    landmark_id = FOCUS_MARK_LANDMARK.get(focus, 14)
+    landmark_id = FOCUS_MARK_LANDMARK.get(focus, 16)
 
     user_point = target_landmarks_3d[user_idx][landmark_id]
     ideal_point = success_landmarks_3d[ideal_idx][landmark_id]
@@ -197,34 +228,37 @@ def analyze_video(file_path):
     ux, uy = to_pixel(user_point, width, height)
     ix, iy = to_pixel(ideal_point, width, height)
 
-    # 理想フォーム画像（緑丸）
+    # 理想画像
     save_frame(success_path, ideal_idx, ideal_img_path)
     ideal_frame = cv2.imread(ideal_img_path)
-    cv2.circle(ideal_frame, (ix, iy), 18, (0, 255, 0), -1)
-    cv2.imwrite(ideal_img_path, ideal_frame)
 
-    # あなたフォーム画像（赤丸＋矢印）
+    if ideal_frame is not None:
+        cv2.circle(ideal_frame, (ix, iy), 18, (0, 255, 0), -1)
+        cv2.imwrite(ideal_img_path, ideal_frame)
+
+    # あなた画像
     save_frame(file_path, user_idx, user_img_path)
     user_frame = cv2.imread(user_img_path)
 
-    cv2.circle(user_frame, (ux, uy), 18, (0, 0, 255), -1)
-    cv2.circle(user_frame, (ix, iy), 18, (0, 255, 0), -1)
+    if user_frame is not None:
+        cv2.circle(user_frame, (ux, uy), 18, (0, 0, 255), -1)
+        cv2.circle(user_frame, (ix, iy), 18, (0, 255, 0), -1)
 
-    cv2.arrowedLine(
-        user_frame,
-        (ux, uy),
-        (ix, iy),
-        (255, 255, 255),
-        4,
-        tipLength=0.3
-    )
+        cv2.arrowedLine(
+            user_frame,
+            (ux, uy),
+            (ix, iy),
+            (255, 255, 255),
+            4,
+            tipLength=0.3
+        )
 
-    cv2.imwrite(user_img_path, user_frame)
+        cv2.imwrite(user_img_path, user_frame)
 
     # --------------------------
-    # AI文章生成（短く）
+    # AI文章生成（短く1文）
     # --------------------------
-    ai_text = generate_ai_menu(diagnosis)
+    ai_text = f"改善ポイントは「{FOCUS_LABELS[focus]}」です。まずは1つだけ意識しましょう！"
 
     # --------------------------
     # 最終レスポンス

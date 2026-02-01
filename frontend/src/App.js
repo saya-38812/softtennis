@@ -181,17 +181,6 @@ function App() {
                 )}
               </div>
             )}
-
-            {/* AIアドバイス */}
-            {result.ai_text && (
-              <div className="result-card">
-                <h2 className="result-title">AIコーチ</h2>
-
-                <p style={{ whiteSpace: "pre-line" }}>
-                  {result.ai_text}
-                </p>
-              </div>
-            )}
           </>
         )}
       </div>
