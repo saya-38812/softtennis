@@ -37,7 +37,6 @@ FOCUS_LABELS = {
     "body_sway": "体軸のブレ",
     "impact_forward": "打点の前後位置",
     "toss_sync": "トスのタイミング",
-    "impact_left_right": "打点の左右位置",
     "weight_left_right": "左右の体重バランス",
 }
 
@@ -49,7 +48,6 @@ FOCUS_MESSAGES = {
     "body_sway": "体の軸がブレています。頭を安定させましょう。",
     "impact_forward": "打点が後ろです。少し前で捉えましょう。",
     "toss_sync": "トスとスイングのタイミングがずれています。",
-    "impact_left_right": "打点が左右にずれています。正面で当てましょう。",
     "weight_left_right": "体重バランスが崩れています。軸足を意識しましょう。",
 }
 
