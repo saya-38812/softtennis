@@ -51,7 +51,6 @@ FOCUS_MESSAGES = {
 
 FOCUS_PRIORITY = list(FOCUS_LABELS.keys())
 
-# 赤丸をつけるMediaPipe landmark（右利き）
 FOCUS_MARK_LANDMARK = {
     "elbow_angle": 14,
     "impact_height": 16,
@@ -69,20 +68,17 @@ FOCUS_MARK_LANDMARK = {
 # ================================
 
 def pick_focus(weakness):
-    """weaknessの中で最優先を1つ選ぶ"""
     for k in FOCUS_PRIORITY:
         if weakness.get(k) != "ok":
             return k
     return "impact_height"
 
 
-def to_pixel(p, w, h):
-    """0-1座標 → ピクセル変換"""
-    return int(p[0] * w), int(p[1] * h)
+def smooth(x, w=5):
+    return np.convolve(x, np.ones(w) / w, mode="same")
 
 
 def save_frame(video_path, idx, out_path):
-    """指定フレームを画像として保存"""
     cap = cv2.VideoCapture(video_path)
     cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
 
@@ -90,62 +86,45 @@ def save_frame(video_path, idx, out_path):
     cap.release()
 
     if not ret:
-        logging.warning("フレーム取得に失敗しました")
         return None
 
     cv2.imwrite(out_path, frame)
     return frame
 
 
-def smooth(x, w=5):
-    """移動平均でノイズ除去"""
-    return np.convolve(x, np.ones(w) / w, mode="same")
-
-
 # ================================
-# 最強インパクト推定（最高点→下降開始）
+# 🎯最強インパクト推定
+# 右手首が最高点→下降開始フレーム
 # ================================
 
-def detect_best_contact_frame(landmarks_3d):
+def detect_best_contact_frame(norm_landmarks):
     """
-    インパクト推定：
-
-    ①右手首が最高点になる
-    ②そこから下降し始める瞬間がインパクト
+    norm_landmarks : [F,33,3]
     """
 
-    n = len(landmarks_3d)
+    n = len(norm_landmarks)
     if n < 15:
         return int(n * 0.7)
 
     WRIST = 16
 
-    wrist_y = []
-    for i in range(n):
-        wrist_y.append(landmarks_3d[i][WRIST][1])
+    wrist_y = np.array([norm_landmarks[i][WRIST][1] for i in range(n)])
+    wrist_y = smooth(wrist_y, 5)
 
-    wrist_y = smooth(np.array(wrist_y), 5)
-
-    # ①最高点（最小y）
+    # ①最高点（y最小）
     peak = int(np.argmin(wrist_y))
 
-    # ②下降開始を探す
-    search_end = min(n - 1, peak + 8)
+    # ②下降開始
+    search_end = min(n - 1, peak + 10)
 
     best = peak
-
     for i in range(peak + 1, search_end):
-        diff = wrist_y[i] - wrist_y[i - 1]
-
-        # 上昇→下降に切り替わった瞬間
-        if diff > 0:
+        if wrist_y[i] > wrist_y[i - 1]:
             best = i
             break
 
-    # 🎯接触はその1フレ後が多い
-    best = min(n - 1, best + 1)
-
-    return best
+    # ③接触は1フレ後が多い
+    return min(n - 1, best + 1)
 
 
 # ================================
@@ -156,12 +135,22 @@ def analyze_video(file_path):
     BASE_DIR = os.path.dirname(__file__)
     success_path = os.path.join(BASE_DIR, "success.mp4")
 
-    # 骨格抽出
-    success_3d = extract_pose_landmarks(success_path)
-    target_3d = extract_pose_landmarks(file_path)
+    # ============================
+    # 骨格抽出（norm + pixel）
+    # ============================
 
-    success_seq = normalize_pose(success_3d)
-    target_seq = normalize_pose(target_3d)
+    success_data = extract_pose_landmarks(success_path)
+    target_data  = extract_pose_landmarks(file_path)
+
+    success_norm = success_data["norm"]
+    target_norm  = target_data["norm"]
+
+    success_pixel = success_data["pixel"]
+    target_pixel  = target_data["pixel"]
+
+    # 正規化（解析用）
+    success_seq = normalize_pose(success_norm)
+    target_seq  = normalize_pose(target_norm)
 
     if len(success_seq) == 0 or len(target_seq) == 0:
         return {
@@ -169,9 +158,10 @@ def analyze_video(file_path):
             "ai_text": "解析できませんでした",
         }
 
-    # ----------------
+    # ============================
     # スコア計算
-    # ----------------
+    # ============================
+
     dists = []
     for t in target_seq:
         d = np.linalg.norm(success_seq - t, axis=(1, 2))
@@ -179,9 +169,10 @@ def analyze_video(file_path):
 
     score = int(max(0, min(100, 100 - np.mean(dists) * 28)))
 
-    # ----------------
-    # 全指標計算（残す）
-    # ----------------
+    # ============================
+    # 全指標計算（全部残す）
+    # ============================
+
     is_right = True
 
     shoulder_diff = np.mean(calculate_shoulder_angle(target_seq, is_right)) - np.mean(
@@ -224,9 +215,10 @@ def analyze_video(file_path):
         calculate_weight_left_right(success_seq)
     )
 
-    # ----------------
+    # ============================
     # weakness判定
-    # ----------------
+    # ============================
+
     weakness = {
         "elbow_angle": "too_bent" if elbow_diff < -20 else "ok",
         "impact_height": "low" if impact_h_diff < -0.15 else "ok",
@@ -241,37 +233,35 @@ def analyze_video(file_path):
 
     focus = pick_focus(weakness)
 
-    # ----------------
-    # メニュー短く1個だけ
-    # ----------------
+    # ============================
+    # メニューは短く1個だけ
+    # ============================
+
     menu = [f"{FOCUS_LABELS[focus]}を改善する素振り練習"]
 
-    # ----------------
-    # インパクト画像生成
-    # ----------------
+    # ============================
+    # インパクト画像生成（ズレない）
+    # ============================
+
     out_dir = os.path.join(BASE_DIR, "..", "outputs")
     os.makedirs(out_dir, exist_ok=True)
 
-    user_idx = detect_best_contact_frame(target_3d)
-    ideal_idx = detect_best_contact_frame(success_3d)
+    user_idx  = detect_best_contact_frame(target_norm)
+    ideal_idx = detect_best_contact_frame(success_norm)
 
     lid = FOCUS_MARK_LANDMARK[focus]
 
-    cap = cv2.VideoCapture(file_path)
-    w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    cap.release()
+    # pixel座標で描画する（絶対ズレない）
+    ux, uy = target_pixel[user_idx][lid]
+    ix, iy = success_pixel[ideal_idx][lid]
 
-    ux, uy = to_pixel(target_3d[user_idx][lid], w, h)
-    ix, iy = to_pixel(success_3d[ideal_idx][lid], w, h)
-
-    # ideal
+    # ideal画像
     ideal_img = save_frame(success_path, ideal_idx, os.path.join(out_dir, "ideal.png"))
     if ideal_img is not None:
         cv2.circle(ideal_img, (ix, iy), 18, (0, 255, 0), -1)
         cv2.imwrite(os.path.join(out_dir, "ideal.png"), ideal_img)
 
-    # user
+    # user画像
     user_img = save_frame(file_path, user_idx, os.path.join(out_dir, "user.png"))
     if user_img is not None:
         cv2.circle(user_img, (ux, uy), 18, (0, 0, 255), -1)
@@ -279,9 +269,10 @@ def analyze_video(file_path):
         cv2.arrowedLine(user_img, (ux, uy), (ix, iy), (255, 255, 255), 4)
         cv2.imwrite(os.path.join(out_dir, "user.png"), user_img)
 
-    # ----------------
+    # ============================
     # AI文章（短く）
-    # ----------------
+    # ============================
+
     ai_text = f"改善ポイントは「{FOCUS_LABELS[focus]}」です。まず1つだけ意識しましょう！"
 
     return {
