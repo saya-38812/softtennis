@@ -42,15 +42,15 @@ FOCUS_LABELS = {
 }
 
 FOCUS_MESSAGES = {
-    "elbow_angle": "肘が曲がりすぎています。もう少し高く固定しましょう。",
-    "impact_height": "打点が低いです。もう少し高い位置で当てましょう。",
-    "shoulder_angle": "体が開きすぎています。横向きを保つ意識が大切です。",
-    "waist_rotation": "腰の回転が足りません。下半身から回す意識を持ちましょう。",
-    "body_sway": "体の軸がブレています。頭の位置を安定させましょう。",
-    "impact_forward": "打点が後ろすぎます。少し前で捉えましょう。",
-    "toss_sync": "トスとスイングのタイミングがずれています。",
-    "impact_left_right": "打点が左右にずれています。体の正面で当てましょう。",
-    "weight_left_right": "左右の体重バランスが崩れています。軸足を意識しましょう。",
+    "elbow_angle": "肘が曲がりすぎています。もう少し高く固定しましょう！",
+    "impact_height": "打点が低いです。もう少し高い位置で当てましょう！",
+    "shoulder_angle": "体が開きすぎています。横向きを保つ意識が大切です！",
+    "waist_rotation": "腰の回転が足りません。下半身から回す意識を持ちましょう！",
+    "body_sway": "体の軸がブレています。頭の位置を安定させましょう！",
+    "impact_forward": "打点が後ろすぎます。少し前で捉えましょう！",
+    "toss_sync": "トスとスイングのタイミングがずれています！",
+    "impact_left_right": "打点が左右にずれています。体の正面で当てましょう！",
+    "weight_left_right": "左右の体重バランスが崩れています。軸足を意識しましょう！",
 }
 
 FOCUS_PRIORITY = [
@@ -328,6 +328,6 @@ def analyze_video(file_path):
     "ideal_image": "/outputs/ideal.png",
     "user_image": "/outputs/user.png",
     "focus_label": FOCUS_LABELS.get(focus, focus),
-    "message": FOCUS_MESSAGES.get(focus, "フォームを改善しましょう。"),
+    "message": FOCUS_MESSAGES.get(focus, "フォームを改善しましょう！"),
     }
 

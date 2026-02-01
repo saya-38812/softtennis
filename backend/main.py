@@ -29,6 +29,13 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 app.mount("/outputs", StaticFiles(directory=OUTPUT_DIR), name="outputs")
 
+app.mount(
+    "/",
+    StaticFiles(directory="frontend/build", html=True),
+    name="frontend"
+)
+
+
 
 class MenuDetailRequest(BaseModel):
     menu_name: str
