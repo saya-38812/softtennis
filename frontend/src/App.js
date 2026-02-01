@@ -39,9 +39,7 @@ function App() {
     formData.append("file", file);
 
     try {
-      const res = await axios.post(`${API_BASE}/analyze`, formData, {
-        timeout: 5 * 60 * 1000,
-      });
+      const res = await axios.post(`${API_BASE}/analyze`, formData);
 
       setResult(res.data);
 
