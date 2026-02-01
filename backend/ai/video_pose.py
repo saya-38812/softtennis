@@ -2,15 +2,12 @@ import os
 import logging
 import numpy as np
 import cv2
+import uuid
 
 from .video_pose_analyzer import extract_pose_landmarks
 from .normalize_pose import normalize_pose
-from .coach_ai_utils import generate_menu, safe_mean
-from .coach_generator import generate_ai_menu
-
-from .angle_utils import (
-    calculate_elbow_angle,
-)
+from .coach_ai_utils import safe_mean
+from .angle_utils import calculate_elbow_angle
 
 logging.basicConfig(level=logging.INFO)
 
@@ -82,8 +79,8 @@ def save_frame(video_path, frame_index, output_path):
 def detect_impact_frame(landmarks_3d, is_right_handed=True):
     """
     インパクト推定：
-    ① 手首速度が最大になる瞬間を探す
-    ② その前後±5フレームで「最も高い打点」を選ぶ
+    ① 手首速度最大フレーム
+    ② 前後±5で最も高い打点フレームを採用
     """
 
     if len(landmarks_3d) < 10:
@@ -91,7 +88,6 @@ def detect_impact_frame(landmarks_3d, is_right_handed=True):
 
     WRIST_ID = 16 if is_right_handed else 15
 
-    # ① 手首速度を計算
     speeds = []
     for i in range(1, len(landmarks_3d)):
         prev = landmarks_3d[i - 1][WRIST_ID]
@@ -100,13 +96,12 @@ def detect_impact_frame(landmarks_3d, is_right_handed=True):
 
     peak_idx = int(np.argmax(speeds))
 
-    # ② ピーク前後で最も高い打点を探す
     window = 5
     start = max(0, peak_idx - window)
     end = min(len(landmarks_3d), peak_idx + window)
 
     best_idx = peak_idx
-    best_y = 9999  # yは小さいほど上
+    best_y = 9999
 
     for i in range(start, end):
         y = landmarks_3d[i][WRIST_ID][1]
@@ -125,16 +120,15 @@ def analyze_video(file_path):
     BASE_DIR = os.path.dirname(__file__)
     success_path = os.path.join(BASE_DIR, "success.mp4")
 
+    # --------------------------
     # landmark取得
+    # --------------------------
     success_landmarks_3d = extract_pose_landmarks(success_path)
     target_landmarks_3d = extract_pose_landmarks(file_path)
 
     success_seq = normalize_pose(success_landmarks_3d)
     target_seq = normalize_pose(target_landmarks_3d)
 
-    # --------------------------
-    # 解析失敗時
-    # --------------------------
     if len(target_seq) == 0 or len(success_seq) == 0:
         return {
             "diagnosis": None,
@@ -146,25 +140,32 @@ def analyze_video(file_path):
     # スコア計算（距離ベース）
     # --------------------------
     frame_scores = []
-    frame_diffs = []
 
     for t in target_seq:
         dists = np.linalg.norm(success_seq - t, axis=(1, 2))
-        min_idx = np.argmin(dists)
-        frame_scores.append(dists[min_idx])
-        frame_diffs.append(success_seq[min_idx] - t)
-
-    frame_diffs = np.array(frame_diffs)
+        frame_scores.append(np.min(dists))
 
     mean_dist = np.mean(frame_scores)
     score = int(max(0, min(100, 100 - mean_dist * 28)))
 
     # --------------------------
-    # 基本弱点（MVP）
+    # インパクト推定
     # --------------------------
-    impact_height = safe_mean(frame_diffs, 0, 1)
+    user_idx = detect_impact_frame(target_landmarks_3d, True)
+    ideal_idx = detect_impact_frame(success_landmarks_3d, True)
 
+    # --------------------------
+    # 打点高さ（手首Y座標で直接評価）
+    # --------------------------
+    WRIST_ID = 16
+    user_y = target_landmarks_3d[user_idx][WRIST_ID][1]
+    ideal_y = success_landmarks_3d[ideal_idx][WRIST_ID][1]
+
+    impact_height_diff = ideal_y - user_y  # プラスなら低い
+
+    # --------------------------
     # 肘角度差
+    # --------------------------
     success_elbow = calculate_elbow_angle(success_seq, True)
     target_elbow = calculate_elbow_angle(target_seq, True)
 
@@ -175,7 +176,7 @@ def analyze_video(file_path):
     # --------------------------
     weakness = {
         "elbow_angle": "too_bent" if elbow_angle_diff < -20 else "ok",
-        "impact_height": "low" if impact_height < -0.15 else "ok",
+        "impact_height": "low" if impact_height_diff > 0.05 else "ok",
     }
 
     diagnosis = {
@@ -187,7 +188,7 @@ def analyze_video(file_path):
         "weakness": weakness,
         "raw_values": {
             "elbow_angle_diff": round(float(elbow_angle_diff), 2),
-            "impact_height_diff": round(float(impact_height), 3),
+            "impact_height_diff": round(float(impact_height_diff), 3),
         }
     }
 
@@ -202,24 +203,21 @@ def analyze_video(file_path):
     menu = ["肘を高く固定する素振り練習"]
 
     # --------------------------
-    # 図解画像生成（インパクト）
+    # 図解画像生成（キャッシュ対策付き）
     # --------------------------
     output_dir = os.path.join(BASE_DIR, "..", "outputs")
     os.makedirs(output_dir, exist_ok=True)
 
-    ideal_img_path = os.path.join(output_dir, "ideal.png")
-    user_img_path = os.path.join(output_dir, "user.png")
+    unique_id = str(uuid.uuid4())[:8]
 
-    # インパクト推定
-    user_idx = detect_impact_frame(target_landmarks_3d, True)
-    ideal_idx = detect_impact_frame(success_landmarks_3d, True)
+    ideal_img_path = os.path.join(output_dir, f"ideal_{unique_id}.png")
+    user_img_path = os.path.join(output_dir, f"user_{unique_id}.png")
 
     landmark_id = FOCUS_MARK_LANDMARK.get(focus, 16)
 
     user_point = target_landmarks_3d[user_idx][landmark_id]
     ideal_point = success_landmarks_3d[ideal_idx][landmark_id]
 
-    # 動画サイズ取得
     cap = cv2.VideoCapture(file_path)
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -228,7 +226,7 @@ def analyze_video(file_path):
     ux, uy = to_pixel(user_point, width, height)
     ix, iy = to_pixel(ideal_point, width, height)
 
-    # 理想画像
+    # 理想画像（緑丸）
     save_frame(success_path, ideal_idx, ideal_img_path)
     ideal_frame = cv2.imread(ideal_img_path)
 
@@ -236,7 +234,7 @@ def analyze_video(file_path):
         cv2.circle(ideal_frame, (ix, iy), 18, (0, 255, 0), -1)
         cv2.imwrite(ideal_img_path, ideal_frame)
 
-    # あなた画像
+    # あなた画像（赤＋緑＋矢印）
     save_frame(file_path, user_idx, user_img_path)
     user_frame = cv2.imread(user_img_path)
 
@@ -256,7 +254,7 @@ def analyze_video(file_path):
         cv2.imwrite(user_img_path, user_frame)
 
     # --------------------------
-    # AI文章生成（短く1文）
+    # AI文章（短く1文）
     # --------------------------
     ai_text = f"改善ポイントは「{FOCUS_LABELS[focus]}」です。まずは1つだけ意識しましょう！"
 
@@ -268,8 +266,8 @@ def analyze_video(file_path):
         "menu": menu,
         "ai_text": ai_text,
 
-        "ideal_image": "/outputs/ideal.png",
-        "user_image": "/outputs/user.png",
+        "ideal_image": f"/outputs/ideal_{unique_id}.png",
+        "user_image": f"/outputs/user_{unique_id}.png",
 
         "focus_label": FOCUS_LABELS.get(focus, focus),
         "message": FOCUS_MESSAGES.get(focus, "フォームを改善しましょう！"),
