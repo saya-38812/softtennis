@@ -21,10 +21,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 UPLOAD_DIR = "uploads"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-os.makedirs("outputs", exist_ok=True)
-app.mount("/outputs", StaticFiles(directory="outputs"), name="outputs")
+BASE_DIR = os.path.dirname(__file__)
+OUTPUT_DIR = os.path.join(BASE_DIR, "outputs")
+
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+app.mount("/outputs", StaticFiles(directory=OUTPUT_DIR), name="outputs")
+
 
 class MenuDetailRequest(BaseModel):
     menu_name: str
