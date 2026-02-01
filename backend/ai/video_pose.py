@@ -97,68 +97,41 @@ def save_frame(video_path, idx, out_path):
     return frame
 
 
-def smooth(x, w=5):
-    """移動平均でノイズ除去"""
-    return np.convolve(x, np.ones(w) / w, mode="same")
-
-
 # ================================
-# 本気インパクト推定（最強版）
+# ✅最強インパクト推定（右手首最高点）
 # ================================
 
-def detect_impact_frame_strict(landmarks_3d):
+def detect_impact_frame_perfect(landmarks_3d):
     """
-    インパクト推定：
-    ・手首速度最大
-    ・打点高さ最大
-    ・肘伸展最大
-    を合成して決定
+    インパクト推定 最強版
+
+    ✅右手首が最も高い瞬間を検出
+    ✅トス頂点を避けるため後半だけ探索
+    ✅最高点の直後 (+2フレーム) をインパクトとする
     """
 
     n = len(landmarks_3d)
-    if n < 15:
+    if n < 10:
         return int(n * 0.7)
 
-    WRIST, ELBOW, SHOULDER = 16, 14, 12
+    WRIST_ID = 16  # 右手首（右利き固定）
 
-    speeds, heights, elbows = [], [], []
+    # 手首y座標（小さいほど上）
+    wrist_y = np.array([
+        landmarks_3d[i][WRIST_ID][1]
+        for i in range(n)
+    ])
 
-    for i in range(1, n):
-        prev = landmarks_3d[i - 1][WRIST]
-        curr = landmarks_3d[i][WRIST]
+    # 後半だけ探索（トス頂点除外）
+    start = int(n * 0.55)
 
-        # 手首速度
-        speeds.append(np.linalg.norm(curr - prev))
+    highest_idx = start + int(np.argmin(wrist_y[start:]))
 
-        # 打点高さ（yが小さいほど高い）
-        heights.append(-curr[1])
+    # インパクトは最高点の少し後ろ
+    impact_idx = highest_idx + 2
+    impact_idx = min(impact_idx, n - 1)
 
-        # 肘角度
-        s = landmarks_3d[i][SHOULDER]
-        e = landmarks_3d[i][ELBOW]
-        w = landmarks_3d[i][WRIST]
-
-        v1 = s - e
-        v2 = w - e
-        cos = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2) + 1e-6)
-        angle = np.degrees(np.arccos(np.clip(cos, -1, 1)))
-        elbows.append(angle)
-
-    speeds = smooth(np.array(speeds))
-    heights = smooth(np.array(heights))
-    elbows = smooth(np.array(elbows))
-
-    def norm(x):
-        return (x - x.min()) / (x.max() - x.min() + 1e-6)
-
-    # 合成スコア
-    score = norm(speeds) * 0.5 + norm(heights) * 0.3 + norm(elbows) * 0.2
-
-    # サーブ後半だけ探索（前半のトス頂点を除外）
-    start = int(len(score) * 0.4)
-    idx = start + np.argmax(score[start:])
-
-    return idx
+    return impact_idx
 
 
 # ================================
@@ -197,9 +170,11 @@ def analyze_video(file_path):
     shoulder_diff = np.mean(calculate_shoulder_angle(target_seq, is_right)) - np.mean(
         calculate_shoulder_angle(success_seq, is_right)
     )
+
     elbow_diff = np.mean(calculate_elbow_angle(target_seq, is_right)) - np.mean(
         calculate_elbow_angle(success_seq, is_right)
     )
+
     wrist_diff = np.mean(calculate_wrist_angle(target_seq, is_right)) - np.mean(
         calculate_wrist_angle(success_seq, is_right)
     )
@@ -255,13 +230,13 @@ def analyze_video(file_path):
     menu = [f"{FOCUS_LABELS[focus]}を改善する素振り練習"]
 
     # ----------------
-    # インパクト画像生成
+    # インパクト画像生成（最強）
     # ----------------
     out_dir = os.path.join(BASE_DIR, "..", "outputs")
     os.makedirs(out_dir, exist_ok=True)
 
-    user_idx = detect_impact_frame_strict(target_3d)
-    ideal_idx = detect_impact_frame_strict(success_3d)
+    user_idx = detect_impact_frame_perfect(target_3d)
+    ideal_idx = detect_impact_frame_perfect(success_3d)
 
     lid = FOCUS_MARK_LANDMARK[focus]
 
