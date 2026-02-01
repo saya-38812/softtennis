@@ -51,17 +51,16 @@ FOCUS_MESSAGES = {
 
 FOCUS_PRIORITY = list(FOCUS_LABELS.keys())
 
-# 赤丸をつけるMediaPipe landmark（右利き）
 FOCUS_MARK_LANDMARK = {
-    "elbow_angle": 14,        # 右肘
-    "impact_height": 16,      # 右手首
+    "elbow_angle": 14,
+    "impact_height": 16,
     "impact_forward": 16,
     "impact_left_right": 16,
     "toss_sync": 16,
-    "shoulder_angle": 12,     # 右肩
-    "waist_rotation": 24,     # 右腰
+    "shoulder_angle": 12,
+    "waist_rotation": 24,
     "body_sway": 24,
-    "weight_left_right": 26,  # 右膝
+    "weight_left_right": 26,
 }
 
 # ================================
@@ -69,7 +68,6 @@ FOCUS_MARK_LANDMARK = {
 # ================================
 
 def pick_focus(weakness):
-    """weaknessの中で最優先を1つ選ぶ"""
     for k in FOCUS_PRIORITY:
         if weakness.get(k) != "ok":
             return k
@@ -77,12 +75,10 @@ def pick_focus(weakness):
 
 
 def to_pixel(p, w, h):
-    """0-1座標 → ピクセル変換"""
     return int(p[0] * w), int(p[1] * h)
 
 
 def save_frame(video_path, idx, out_path):
-    """指定フレームを画像として保存"""
     cap = cv2.VideoCapture(video_path)
     cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
 
@@ -90,48 +86,67 @@ def save_frame(video_path, idx, out_path):
     cap.release()
 
     if not ret:
-        logging.warning("フレーム取得に失敗しました")
+        logging.warning("フレーム取得失敗")
         return None
 
     cv2.imwrite(out_path, frame)
     return frame
 
 
+def smooth(x, w=5):
+    return np.convolve(x, np.ones(w) / w, mode="same")
+
+
 # ================================
-# ✅最強インパクト推定（右手首最高点）
+# 🎯インパクト推定（最強改善版）
 # ================================
 
-def detect_impact_frame_perfect(landmarks_3d):
+def detect_best_contact_frame(landmarks_3d):
     """
-    インパクト推定 最強版
+    インパクト推定：
 
-    ✅右手首が最も高い瞬間を検出
-    ✅トス頂点を避けるため後半だけ探索
-    ✅最高点の直後 (+2フレーム) をインパクトとする
+    ✅右手首が最高点になる瞬間
+    ＋
+    ✅速度が最大になる瞬間
+    ＋
+    ✅最高点の少し前を採用（当たる瞬間）
     """
 
     n = len(landmarks_3d)
-    if n < 10:
+    if n < 15:
         return int(n * 0.7)
 
-    WRIST_ID = 16  # 右手首（右利き固定）
+    WRIST = 16
 
-    # 手首y座標（小さいほど上）
-    wrist_y = np.array([
-        landmarks_3d[i][WRIST_ID][1]
-        for i in range(n)
-    ])
+    wrist_y = []
+    wrist_speed = []
 
-    # 後半だけ探索（トス頂点除外）
-    start = int(n * 0.55)
+    for i in range(1, n):
+        prev = landmarks_3d[i - 1][WRIST]
+        curr = landmarks_3d[i][WRIST]
 
-    highest_idx = start + int(np.argmin(wrist_y[start:]))
+        wrist_y.append(curr[1])  # 高さ（小さいほど上）
+        wrist_speed.append(np.linalg.norm(curr - prev))
 
-    # インパクトは最高点の少し後ろ
-    impact_idx = highest_idx + 2
-    impact_idx = min(impact_idx, n - 1)
+    wrist_y = np.array(wrist_y)
+    wrist_speed = np.array(wrist_speed)
 
-    return impact_idx
+    wrist_y = smooth(wrist_y)
+    wrist_speed = smooth(wrist_speed)
+
+    # ①最高点（最小y）
+    highest_idx = int(np.argmin(wrist_y))
+
+    # ②速度最大
+    speed_idx = int(np.argmax(wrist_speed))
+
+    # ③合成（最高点寄りにする）
+    final_idx = int((highest_idx * 0.7) + (speed_idx * 0.3))
+
+    # 🎯インパクトは最高点の「少し前」
+    final_idx = max(0, final_idx - 2)
+
+    return final_idx
 
 
 # ================================
@@ -142,7 +157,6 @@ def analyze_video(file_path):
     BASE_DIR = os.path.dirname(__file__)
     success_path = os.path.join(BASE_DIR, "success.mp4")
 
-    # 骨格抽出
     success_3d = extract_pose_landmarks(success_path)
     target_3d = extract_pose_landmarks(file_path)
 
@@ -163,7 +177,7 @@ def analyze_video(file_path):
     score = int(max(0, min(100, 100 - np.mean(dists) * 28)))
 
     # ----------------
-    # 全指標計算（残す）
+    # 指標計算
     # ----------------
     is_right = True
 
@@ -230,13 +244,13 @@ def analyze_video(file_path):
     menu = [f"{FOCUS_LABELS[focus]}を改善する素振り練習"]
 
     # ----------------
-    # インパクト画像生成（最強）
+    # インパクト画像生成
     # ----------------
     out_dir = os.path.join(BASE_DIR, "..", "outputs")
     os.makedirs(out_dir, exist_ok=True)
 
-    user_idx = detect_impact_frame_perfect(target_3d)
-    ideal_idx = detect_impact_frame_perfect(success_3d)
+    user_idx = detect_best_contact_frame(target_3d)
+    ideal_idx = detect_best_contact_frame(success_3d)
 
     lid = FOCUS_MARK_LANDMARK[focus]
 
