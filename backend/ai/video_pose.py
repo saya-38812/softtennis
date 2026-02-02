@@ -2,8 +2,8 @@ import os
 import numpy as np
 import cv2
 import logging
-
 import time
+import glob
 
 from .video_pose_analyzer import extract_pose_landmarks
 from .normalize_pose import normalize_pose
@@ -63,9 +63,7 @@ def draw_focus(frame, focus, ux, uy, ix, iy):
 
     h, w = frame.shape[:2]
 
-    # --------------------------
     # ① 打点高さ → 横ライン
-    # --------------------------
     if focus == "impact_height":
 
         cv2.line(frame, (0, iy), (w, iy), (0, 255, 0), 4)
@@ -77,9 +75,7 @@ def draw_focus(frame, focus, ux, uy, ix, iy):
         cv2.putText(frame, "Your Height", (20, uy - 10),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
 
-    # --------------------------
     # ② 肘角度 → ターゲットマーク
-    # --------------------------
     elif focus == "elbow_angle":
 
         cv2.circle(frame, (ux, uy), 28, (0, 0, 255), 3)
@@ -91,9 +87,7 @@ def draw_focus(frame, focus, ux, uy, ix, iy):
         cv2.arrowedLine(frame, (ux, uy), (ix, iy),
                         (255, 255, 255), 3, tipLength=0.3)
 
-    # --------------------------
     # ③ 体軸ブレ → 縦ライン
-    # --------------------------
     elif focus == "body_sway":
 
         cv2.line(frame, (ix, 0), (ix, h), (0, 255, 0), 4)
@@ -104,6 +98,21 @@ def draw_focus(frame, focus, ux, uy, ix, iy):
 
         cv2.putText(frame, "Your Axis", (ux + 10, 80),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+
+
+# ==============================
+# ✅古い画像を自動削除する
+# ==============================
+def cleanup_old_outputs(out_dir, keep=5):
+    files = sorted(glob.glob(out_dir + "/*.png"), key=os.path.getmtime)
+
+    # 最新keep枚だけ残す
+    if len(files) > keep:
+        for f in files[:-keep]:
+            try:
+                os.remove(f)
+            except:
+                pass
 
 
 # ==============================
@@ -131,25 +140,18 @@ def analyze_video(file_path):
     success_seq = normalize_pose(success_norm)
     target_seq  = normalize_pose(target_norm)
 
-    # --------------------------
     # 指標計算（3つ）
-    # --------------------------
     elbow_val  = np.mean(calculate_elbow_angle(target_seq, True))
     impact_val = np.mean(calculate_impact_height(target_seq, True))
     sway_val   = np.mean(calculate_body_sway(target_seq))
 
-    # --------------------------
-    # weakness判定（表示用）
-    # --------------------------
     weakness = {
         "impact_height": "low" if impact_val < -0.15 else "ok",
         "elbow_angle": "too_bent" if elbow_val < -20 else "ok",
         "body_sway": "unstable" if sway_val > 0.03 else "ok",
     }
 
-    # ==============================
-    # ✅最重要改善：一番悪い指標を選ぶ
-    # ==============================
+    # 一番悪い指標を選ぶ
     scores = {
         "impact_height": abs(impact_val),
         "elbow_angle": abs(elbow_val),
@@ -158,9 +160,7 @@ def analyze_video(file_path):
 
     focus = max(scores, key=scores.get)
 
-    # --------------------------
     # フレーム取得
-    # --------------------------
     user_idx  = detect_contact_frame(target_norm)
     ideal_idx = detect_contact_frame(success_norm)
 
@@ -169,9 +169,7 @@ def analyze_video(file_path):
     ux, uy = target_pixel[user_idx][lid]
     ix, iy = success_pixel[ideal_idx][lid]
 
-    # --------------------------
-    # 画像取得（保存するだけ）
-    # --------------------------
+    # フレーム画像取得
     cap1 = cv2.VideoCapture(file_path)
     cap1.set(cv2.CAP_PROP_POS_FRAMES, user_idx)
     _, user_img = cap1.read()
@@ -186,30 +184,35 @@ def analyze_video(file_path):
     draw_focus(user_img, focus, ux, uy, ix, iy)
     draw_focus(ideal_img, focus, ix, iy, ix, iy)
 
-    # 保存
+    # ==============================
+    # ✅キャッシュ完全対策：毎回ファイル名を変える
+    # ==============================
     out_dir = os.path.join(BASE_DIR, "..", "outputs")
     os.makedirs(out_dir, exist_ok=True)
 
-    cv2.imwrite(os.path.join(out_dir, "user.png"), user_img)
-    cv2.imwrite(os.path.join(out_dir, "ideal.png"), ideal_img)
+    ts = int(time.time())
 
-     # --------------------------
-    # ✅キャッシュ対策：毎回URLを変える
-    # --------------------------
-    cache_buster = int(time.time())
+    user_name  = f"user_{ts}.png"
+    ideal_name = f"ideal_{ts}.png"
 
-    # --------------------------
+    cv2.imwrite(os.path.join(out_dir, user_name), user_img)
+    cv2.imwrite(os.path.join(out_dir, ideal_name), ideal_img)
+
+    # 古い画像を掃除
+    cleanup_old_outputs(out_dir)
+
+    # ==============================
     # 結果返却
-    # --------------------------
+    # ==============================
     return {
         "diagnosis": {
             "weakness": weakness,
-            "scores": scores,   # ←どれが悪かったか確認できる
+            "scores": scores,
         },
         "menu": [f"{FOCUS_LABELS[focus]}を改善する練習を1つだけやりましょう"],
         "ai_text": f"改善ポイントは「{FOCUS_LABELS[focus]}」です。",
-        "ideal_image": "/outputs/ideal.png",
-        "user_image": "/outputs/user.png",
+        "ideal_image": f"/outputs/{ideal_name}",
+        "user_image": f"/outputs/{user_name}",
         "focus_label": FOCUS_LABELS[focus],
         "message": FOCUS_MESSAGES[focus],
     }
