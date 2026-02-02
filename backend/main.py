@@ -116,4 +116,4 @@ async def get_menu_detail(request: MenuDetailRequest):
 
 # app.mount("/", StaticFiles(directory="build", html=True), name="static")
 
-app.mount("/app", StaticFiles(directory="build", html=True), name="static")
+app.mount("/", StaticFiles(directory="build", html=True), name="static")
