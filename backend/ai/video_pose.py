@@ -2,6 +2,7 @@ import os
 import numpy as np
 import cv2
 import logging
+import uuid
 
 from .video_pose_analyzer import extract_pose_landmarks
 from .normalize_pose import normalize_pose
@@ -39,21 +40,15 @@ FOCUS_LANDMARK = {
 }
 
 # ==============================
-# ✅腕が一番上の瞬間で固定する（ズレ最小）
+# ✅右手首が一番上の瞬間を使う
 # ==============================
-def detect_top_arm_frame(norm_landmarks):
-    """
-    MVP最適解：
-    ・右手首が最も高い瞬間（y最小）を使う
-    → インパクト推定を捨ててズレを消す
-    """
+def detect_contact_frame(norm_landmarks):
 
     n = len(norm_landmarks)
     if n < 10:
         return int(n * 0.7)
 
     WRIST = 16
-
     wrist_y = np.array([
         norm_landmarks[i][WRIST][1]
         for i in range(n)
@@ -61,26 +56,6 @@ def detect_top_arm_frame(norm_landmarks):
 
     best = int(np.argmin(wrist_y))
     return best
-
-
-# ==============================
-# ✅指定フレームだけ取得（frames保存しない）
-# ==============================
-def get_frame(video_path, frame_idx):
-    """
-    必要な1フレームだけ取得する
-    → Renderで落ちない最重要ポイント
-    """
-    cap = cv2.VideoCapture(video_path)
-    cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
-
-    ret, frame = cap.read()
-    cap.release()
-
-    if not ret:
-        return None
-
-    return frame
 
 
 # ==============================
@@ -94,6 +69,7 @@ def draw_focus(frame, focus, ux, uy, ix, iy):
     # ① 打点の高さ → 横ライン
     # --------------------------
     if focus == "impact_height":
+
         pass
 
     # --------------------------
@@ -101,15 +77,12 @@ def draw_focus(frame, focus, ux, uy, ix, iy):
     # --------------------------
     elif focus == "elbow_angle":
 
-        # あなた（赤）
         cv2.circle(frame, (ux, uy), 28, (0, 0, 255), 3)
         cv2.circle(frame, (ux, uy), 6, (0, 0, 255), -1)
 
-        # 理想（緑）
         cv2.circle(frame, (ix, iy), 28, (0, 255, 0), 3)
         cv2.circle(frame, (ix, iy), 6, (0, 255, 0), -1)
 
-        # 矢印で方向
         cv2.arrowedLine(frame, (ux, uy), (ix, iy),
                         (255, 255, 255), 3, tipLength=0.3)
 
@@ -137,8 +110,7 @@ def analyze_video(file_path):
     success_path = os.path.join(BASE_DIR, "success.mp4")
 
     # --------------------------
-    # 骨格抽出（norm + pixelのみ）
-    # framesは保存しない
+    # 骨格抽出（norm + pixel + frames）
     # --------------------------
     success = extract_pose_landmarks(success_path)
     target  = extract_pose_landmarks(file_path)
@@ -148,6 +120,9 @@ def analyze_video(file_path):
 
     success_pixel = success["pixel"]
     target_pixel  = target["pixel"]
+
+    success_frames = success["frames"]
+    target_frames  = target["frames"]
 
     if len(success_norm) == 0 or len(target_norm) == 0:
         return {"menu": ["基本フォーム練習"], "ai_text": "解析できませんでした"}
@@ -181,10 +156,10 @@ def analyze_video(file_path):
             break
 
     # --------------------------
-    # ✅腕最高点フレームで固定（ズレ防止）
+    # 腕最高点フレームで固定
     # --------------------------
-    user_idx  = detect_top_arm_frame(target_norm)
-    ideal_idx = detect_top_arm_frame(success_norm)
+    user_idx  = detect_contact_frame(target_norm)
+    ideal_idx = detect_contact_frame(success_norm)
 
     lid = FOCUS_LANDMARK[focus]
 
@@ -192,28 +167,27 @@ def analyze_video(file_path):
     ix, iy = success_pixel[ideal_idx][lid]
 
     # --------------------------
-    # ✅必要フレームだけ取得（Render安全）
+    # フレームを直接描画（ズレない）
     # --------------------------
-    user_img  = get_frame(file_path, user_idx)
-    ideal_img = get_frame(success_path, ideal_idx)
+    user_img  = target_frames[user_idx].copy()
+    ideal_img = success_frames[ideal_idx].copy()
 
-    if user_img is None or ideal_img is None:
-        return {"menu": ["基本フォーム練習"], "ai_text": "画像生成に失敗しました"}
-
-    # --------------------------
-    # 描画
-    # --------------------------
     draw_focus(user_img, focus, ux, uy, ix, iy)
     draw_focus(ideal_img, focus, ix, iy, ix, iy)
 
     # --------------------------
-    # 保存
+    # ✅UUIDで毎回別ファイル名にする（キャッシュ完全防止）
     # --------------------------
+    uid = str(uuid.uuid4())
+
+    user_file  = f"user_{uid}.png"
+    ideal_file = f"ideal_{uid}.png"
+
     out_dir = os.path.join(BASE_DIR, "..", "outputs")
     os.makedirs(out_dir, exist_ok=True)
 
-    cv2.imwrite(os.path.join(out_dir, "user.png"), user_img)
-    cv2.imwrite(os.path.join(out_dir, "ideal.png"), ideal_img)
+    cv2.imwrite(os.path.join(out_dir, user_file), user_img)
+    cv2.imwrite(os.path.join(out_dir, ideal_file), ideal_img)
 
     # --------------------------
     # 結果返却
@@ -224,8 +198,8 @@ def analyze_video(file_path):
         },
         "menu": [f"{FOCUS_LABELS[focus]}を改善する練習を1つだけやりましょう"],
         "ai_text": f"改善ポイントは「{FOCUS_LABELS[focus]}」です。",
-        "ideal_image": "/outputs/ideal.png",
-        "user_image": "/outputs/user.png",
+        "ideal_image": f"/outputs/{ideal_file}",
+        "user_image": f"/outputs/{user_file}",
         "focus_label": FOCUS_LABELS[focus],
         "message": FOCUS_MESSAGES[focus],
     }
