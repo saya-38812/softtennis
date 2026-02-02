@@ -3,66 +3,84 @@ import numpy as np
 from mediapipe import Image, ImageFormat
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
-from typing import Dict, Any
+from typing import List, Any
 
 MODEL_PATH = "ai/models/pose_landmarker_full.task"
 
-# ============================
-# MediaPipe初期化（1回だけ）
-# ============================
+# ==============================
+# PoseLandmarker 正しい初期化
+# ==============================
+
 base = python.BaseOptions(model_asset_path=MODEL_PATH)
 
-detector = vision.PoseLandmarker.create_from_options(
-    vision.PoseLandmarkerOptions(base_options=base)
+options = vision.PoseLandmarkerOptions(
+    base_options=base,
+    running_mode=vision.RunningMode.IMAGE,
+    num_poses=1,
 )
 
-# ============================
-# 骨格抽出（norm + pixel + frame）
-# ============================
-def extract_pose_landmarks(video_path: str) -> Dict[str, Any]:
+detector = vision.PoseLandmarker.create_from_options(options)
+
+# ==============================
+# 骨格抽出
+# ==============================
+
+def extract_pose_landmarks(video_path: str):
+    """
+    Returns:
+      norm: [F,33,3] 正規化座標 (0-1)
+      pixel: [F,33,2] ピクセル座標
+    """
 
     cap = cv2.VideoCapture(video_path)
 
-    norm_list = []
-    pixel_list = []
-    frame_list = []
+    all_norm = []
+    all_pixel = []
+
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
             break
 
-        h, w = frame.shape[:2]
-
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        mp_image = Image(image_format=ImageFormat.SRGB, data=rgb)
+
+        mp_image = Image(
+            image_format=ImageFormat.SRGB,
+            data=rgb
+        )
 
         result = detector.detect(mp_image)
 
         if result.pose_landmarks:
             lm = result.pose_landmarks[0]
 
-            # norm座標（0〜1）
-            norm = np.array([[p.x, p.y, p.z] for p in lm])
+            norm_points = []
+            pixel_points = []
 
-            # pixel座標（絶対一致）
-            pixel = np.array([[int(p.x * w), int(p.y * h)] for p in lm])
+            for p in lm:
+                # 正規化
+                norm_points.append([p.x, p.y, p.z])
 
-            norm_list.append(norm)
-            pixel_list.append(pixel)
-            frame_list.append(frame)
+                # ピクセル変換
+                px = int(p.x * width)
+                py = int(p.y * height)
+                pixel_points.append([px, py])
+
+            all_norm.append(norm_points)
+            all_pixel.append(pixel_points)
 
     cap.release()
 
-    if len(norm_list) == 0:
+    if len(all_norm) == 0:
         return {
-            "norm": np.zeros((0, 0, 0)),
-            "pixel": np.zeros((0, 0, 0)),
-            "frames": []
+            "norm": np.zeros((0, 33, 3)),
+            "pixel": np.zeros((0, 33, 2)),
         }
 
     return {
-        "norm": np.array(norm_list),      # [F,33,3]
-        "pixel": np.array(pixel_list),    # [F,33,2]
-        "frames": frame_list              # frameそのもの
+        "norm": np.array(all_norm),
+        "pixel": np.array(all_pixel),
     }
