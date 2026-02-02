@@ -36,28 +36,36 @@ class MenuDetailRequest(BaseModel):
     menu_name: str
     diagnosis: dict
 
+import traceback
+
 @app.post("/analyze")
 async def analyze(file: UploadFile = File(...)):
-    """
-    動画ファイルを受け取り、解析&コーチングアドバイスAPI
-    Returns: 診断情報, 練習メニュー（リスト＆自然文）
-    """
+
     path = f"{UPLOAD_DIR}/{file.filename}"
+
     try:
         with open(path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-        result = analyze_video(path)  # dict: diagnosis, menu, ai_text
+
+        result = analyze_video(path)
         return {"status": "ok", **result}
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"解析中エラー: {e}")
+        print("🔥 ANALYZE ERROR:", e)
+        traceback.print_exc()   # ←これが最重要
+
+        raise HTTPException(
+            status_code=500,
+            detail="解析中にサーバー内部でエラーが発生しました"
+        )
+
     finally:
-        # 解析完了後、成功・失敗に関わらずファイルを削除
         if os.path.exists(path):
             try:
                 os.remove(path)
             except Exception as e:
-                # 削除失敗はログに記録するが、レスポンスには影響させない
-                print(f"警告: ファイル削除に失敗しました ({path}): {e}")
+                print("⚠️ ファイル削除失敗:", e)
+
 
 @app.post("/menu-detail")
 async def get_menu_detail(request: MenuDetailRequest):
