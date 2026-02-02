@@ -94,15 +94,7 @@ def draw_focus(frame, focus, ux, uy, ix, iy):
     # ① 打点の高さ → 横ライン
     # --------------------------
     if focus == "impact_height":
-
-        cv2.line(frame, (0, iy), (w, iy), (0, 255, 0), 4)
-        cv2.line(frame, (0, uy), (w, uy), (0, 0, 255), 4)
-
-        cv2.putText(frame, "Ideal Height", (20, iy - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-
-        cv2.putText(frame, "Your Height", (20, uy - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+        pass
 
     # --------------------------
     # ② 肘角度 → ターゲットマーク
