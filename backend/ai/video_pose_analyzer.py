@@ -15,16 +15,6 @@ detector = vision.PoseLandmarker.create_from_options(
 
 
 def extract_pose_landmarks(video_path: str):
-    """
-    動画から骨格ランドマークを抽出する（完全版）
-
-    Returns:
-    {
-        "norm":   [F,33,3]   正規化座標（0-1）
-        "pixel":  [F,33,2]   ピクセル座標（描画用）
-        "frames": [F,H,W,3]  元フレーム画像
-    }
-    """
 
     cap = cv2.VideoCapture(video_path)
 
@@ -32,17 +22,24 @@ def extract_pose_landmarks(video_path: str):
     all_pixel = []
     all_frames = []
 
+    MAX_FRAMES = 60
+    frame_count = 0
+
     while cap.isOpened():
+
         ret, frame = cap.read()
         if not ret:
             break
 
+        frame_count += 1
+        if frame_count > MAX_FRAMES:
+            break
+
+        # 解像度縮小（最重要）
+        frame = cv2.resize(frame, (640, 360))
+
         h, w = frame.shape[:2]
 
-        # フレーム保存（描画用）
-        all_frames.append(frame.copy())
-
-        # MediaPipe入力
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         mp_image = Image(image_format=ImageFormat.SRGB, data=rgb)
 
@@ -52,26 +49,23 @@ def extract_pose_landmarks(video_path: str):
 
             lm = result.pose_landmarks[0]
 
-            # norm座標（0-1）
-            norm_points = np.array([[p.x, p.y, p.z] for p in lm])
+            norm = []
+            pixel = []
 
-            # pixel座標（描画用）
-            pixel_points = np.array([[int(p.x * w), int(p.y * h)] for p in lm])
+            for p in lm:
+                norm.append([p.x, p.y, p.z])
+                pixel.append([int(p.x * w), int(p.y * h)])
 
-            all_norm.append(norm_points)
-            all_pixel.append(pixel_points)
-
-        else:
-            # 検出失敗フレームはスキップせず補完（超重要）
-            all_norm.append(np.zeros((33, 3)))
-            all_pixel.append(np.zeros((33, 2)))
+            all_norm.append(norm)
+            all_pixel.append(pixel)
+            all_frames.append(frame.copy())
 
     cap.release()
 
-    if len(all_norm) == 0:
+    if not all_norm:
         return {
-            "norm": np.zeros((0, 0, 0)),
-            "pixel": np.zeros((0, 0, 0)),
+            "norm": np.zeros((0, 33, 3)),
+            "pixel": np.zeros((0, 33, 2)),
             "frames": [],
         }
 
