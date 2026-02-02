@@ -39,12 +39,12 @@ FOCUS_LANDMARK = {
 }
 
 # ==============================
-# ✅右腕が一番上の瞬間で固定する
+# ✅腕が一番上の瞬間で固定する（MVP最強）
 # ==============================
 def detect_top_arm_frame(norm_landmarks):
     """
     MVP最適解：
-    ・右手首が最も高い瞬間（y最小）を使う
+    ・右手首が最も高い瞬間（y最小）
     → インパクト推定を捨ててズレを消す
     """
 
@@ -64,34 +64,37 @@ def detect_top_arm_frame(norm_landmarks):
 
 
 # ==============================
-# ✅描画ルール（最終版）
+# ✅ユーザー側描画（赤＋緑＋矢印）
 # ==============================
-def draw_focus(frame, focus, ux, uy, ix, iy):
-
-    h, w = frame.shape[:2]
+def draw_user(frame, focus, ux, uy, ix, iy):
 
     # --------------------------
-    # ① 打点の高さ → 横ライン
+    # ① 打点高さ → 丸＋矢印（ライン廃止）
     # --------------------------
     if focus == "impact_height":
 
-        cv2.line(frame, (0, iy), (w, iy), (0, 255, 0), 4)
-        cv2.line(frame, (0, uy), (w, uy), (0, 0, 255), 4)
+        cv2.circle(frame, (ux, uy), 18, (0, 0, 255), -1)   # あなた（赤）
+        cv2.circle(frame, (ix, iy), 18, (0, 255, 0), -1)   # 理想（緑）
 
-        cv2.putText(frame, "Ideal Height", (20, iy - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-
-        cv2.putText(frame, "Your Height", (20, uy - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+        cv2.arrowedLine(
+            frame,
+            (ux, uy),
+            (ix, iy),
+            (255, 255, 255),
+            3,
+            tipLength=0.3
+        )
 
     # --------------------------
     # ② 肘角度 → ターゲットマーク
     # --------------------------
     elif focus == "elbow_angle":
 
+        # あなた（赤）
         cv2.circle(frame, (ux, uy), 28, (0, 0, 255), 3)
         cv2.circle(frame, (ux, uy), 6, (0, 0, 255), -1)
 
+        # 理想（緑）
         cv2.circle(frame, (ix, iy), 28, (0, 255, 0), 3)
         cv2.circle(frame, (ix, iy), 6, (0, 255, 0), -1)
 
@@ -103,18 +106,34 @@ def draw_focus(frame, focus, ux, uy, ix, iy):
     # --------------------------
     elif focus == "body_sway":
 
+        h, w = frame.shape[:2]
+
+        # 理想軸（緑）
         cv2.line(frame, (ix, 0), (ix, h), (0, 255, 0), 4)
+
+        # あなた軸（赤）
         cv2.line(frame, (ux, 0), (ux, h), (0, 0, 255), 4)
-
-        cv2.putText(frame, "Ideal Axis", (ix + 10, 40),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-
-        cv2.putText(frame, "Your Axis", (ux + 10, 80),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
 
 
 # ==============================
-# ✅メイン解析
+# ✅理想側描画（緑だけ）
+# ==============================
+def draw_ideal(frame, focus, ix, iy):
+
+    if focus == "impact_height":
+        cv2.circle(frame, (ix, iy), 18, (0, 255, 0), -1)
+
+    elif focus == "elbow_angle":
+        cv2.circle(frame, (ix, iy), 28, (0, 255, 0), 3)
+        cv2.circle(frame, (ix, iy), 6, (0, 255, 0), -1)
+
+    elif focus == "body_sway":
+        h, w = frame.shape[:2]
+        cv2.line(frame, (ix, 0), (ix, h), (0, 255, 0), 4)
+
+
+# ==============================
+# ✅メイン解析（MVP完成版）
 # ==============================
 def analyze_video(file_path):
 
@@ -168,7 +187,7 @@ def analyze_video(file_path):
             break
 
     # --------------------------
-    # ✅腕最高点フレームで固定
+    # ✅腕最高点フレームで固定（ズレない）
     # --------------------------
     user_idx  = detect_top_arm_frame(target_norm)
     ideal_idx = detect_top_arm_frame(success_norm)
@@ -179,13 +198,13 @@ def analyze_video(file_path):
     ix, iy = success_pixel[ideal_idx][lid]
 
     # --------------------------
-    # フレームを直接描画（ズレない）
+    # フレームを直接描画（絶対ズレない）
     # --------------------------
     user_img  = target_frames[user_idx].copy()
     ideal_img = success_frames[ideal_idx].copy()
 
-    draw_focus(user_img, focus, ux, uy, ix, iy)
-    draw_focus(ideal_img, focus, ix, iy, ix, iy)
+    draw_user(user_img, focus, ux, uy, ix, iy)
+    draw_ideal(ideal_img, focus, ix, iy)
 
     # --------------------------
     # 保存
