@@ -15,6 +15,14 @@ from .angle_utils import (
 
 logging.basicConfig(level=logging.INFO)
 
+import glob
+
+files = glob.glob(out_dir + "/*.png")
+if len(files) > 50:
+    for f in files[:20]:
+        os.remove(f)
+
+
 # ==============================
 # MVPで強く出す改善ポイント（3つだけ）
 # ==============================
