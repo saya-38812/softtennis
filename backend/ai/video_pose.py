@@ -2,8 +2,7 @@ import os
 import numpy as np
 import cv2
 import logging
-import uuid
-import glob
+import time   # ←追加（キャッシュ対策）
 
 from .video_pose_analyzer import extract_pose_landmarks
 from .normalize_pose import normalize_pose
@@ -17,7 +16,7 @@ from .angle_utils import (
 logging.basicConfig(level=logging.INFO)
 
 # ==============================
-# 改善フォーカス（3つだけ）
+# MVPで強く出す改善ポイント（3つだけ）
 # ==============================
 MAIN_FOCUS = ["impact_height", "elbow_angle", "body_sway"]
 
@@ -33,16 +32,17 @@ FOCUS_MESSAGES = {
     "body_sway": "体の軸がブレています。頭の位置を安定させましょう。",
 }
 
+# 描画対象ランドマーク（右利き固定）
 FOCUS_LANDMARK = {
-    "impact_height": 16,
-    "elbow_angle": 14,
-    "body_sway": 24,
+    "impact_height": 16,  # 手首
+    "elbow_angle": 14,   # 肘
+    "body_sway": 24,     # 腰
 }
 
 # ==============================
-# 腕が一番上の瞬間を使う
+# ✅腕が一番上の瞬間で固定（ズレない）
 # ==============================
-def detect_contact_frame(norm_landmarks):
+def detect_top_arm_frame(norm_landmarks):
 
     n = len(norm_landmarks)
     if n < 10:
@@ -51,28 +51,59 @@ def detect_contact_frame(norm_landmarks):
     WRIST = 16
     wrist_y = np.array([norm_landmarks[i][WRIST][1] for i in range(n)])
 
-    return int(np.argmin(wrist_y))
+    best = int(np.argmin(wrist_y))
+    return best
 
 
 # ==============================
-# 描画ルール
+# ✅フレーム保存（必要な1枚だけ）
+# ==============================
+def save_frame(video_path, idx, out_path):
+
+    cap = cv2.VideoCapture(video_path)
+    cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+
+    ret, frame = cap.read()
+    cap.release()
+
+    if not ret:
+        return None
+
+    cv2.imwrite(out_path, frame)
+    return frame
+
+
+# ==============================
+# ✅描画ルール（MVP最終版）
 # ==============================
 def draw_focus(frame, focus, ux, uy, ix, iy):
 
     h, w = frame.shape[:2]
 
+    # --------------------------
+    # ① 打点高さ → 横ライン
+    # --------------------------
     if focus == "impact_height":
+        cv2.line(frame, (0, iy), (w, iy), (0, 255, 0), 4)
+        cv2.line(frame, (0, uy), (w, uy), (0, 0, 255), 4)
 
-        pass
-
+    # --------------------------
+    # ② 肘角度 → ターゲットマーク
+    # --------------------------
     elif focus == "elbow_angle":
 
         cv2.circle(frame, (ux, uy), 28, (0, 0, 255), 3)
+        cv2.circle(frame, (ux, uy), 6, (0, 0, 255), -1)
+
         cv2.circle(frame, (ix, iy), 28, (0, 255, 0), 3)
+        cv2.circle(frame, (ix, iy), 6, (0, 255, 0), -1)
 
         cv2.arrowedLine(frame, (ux, uy), (ix, iy),
                         (255, 255, 255), 3, tipLength=0.3)
 
+    # --------------------------
+    # ③ 体軸ブレ → 縦ライン
+    # --------------------------
     elif focus == "body_sway":
 
         cv2.line(frame, (ix, 0), (ix, h), (0, 255, 0), 4)
@@ -80,7 +111,7 @@ def draw_focus(frame, focus, ux, uy, ix, iy):
 
 
 # ==============================
-# メイン解析
+# ✅メイン解析
 # ==============================
 def analyze_video(file_path):
 
@@ -88,19 +119,16 @@ def analyze_video(file_path):
     success_path = os.path.join(BASE_DIR, "success.mp4")
 
     # --------------------------
-    # 骨格抽出
+    # 骨格抽出（軽量版）
     # --------------------------
     success = extract_pose_landmarks(success_path)
     target  = extract_pose_landmarks(file_path)
 
-    success_norm = success["norm"]
-    target_norm  = target["norm"]
+    success_norm  = success["norm"]
+    target_norm   = target["norm"]
 
     success_pixel = success["pixel"]
     target_pixel  = target["pixel"]
-
-    success_frames = success["frames"]
-    target_frames  = target["frames"]
 
     if len(success_norm) == 0 or len(target_norm) == 0:
         return {"menu": ["基本フォーム練習"], "ai_text": "解析できませんでした"}
@@ -124,7 +152,9 @@ def analyze_video(file_path):
         "body_sway": "unstable" if sway_val > 0.03 else "ok",
     }
 
-    # focus決定
+    # --------------------------
+    # focus決定（優先順）
+    # --------------------------
     focus = "impact_height"
     for k in MAIN_FOCUS:
         if weakness[k] != "ok":
@@ -132,53 +162,58 @@ def analyze_video(file_path):
             break
 
     # --------------------------
-    # フレーム取得
+    # 腕最高点フレームで固定
     # --------------------------
-    user_idx  = detect_contact_frame(target_norm)
-    ideal_idx = detect_contact_frame(success_norm)
+    user_idx  = detect_top_arm_frame(target_norm)
+    ideal_idx = detect_top_arm_frame(success_norm)
 
     lid = FOCUS_LANDMARK[focus]
 
     ux, uy = target_pixel[user_idx][lid]
     ix, iy = success_pixel[ideal_idx][lid]
 
-    user_img  = target_frames[user_idx].copy()
-    ideal_img = success_frames[ideal_idx].copy()
-
-    draw_focus(user_img, focus, ux, uy, ix, iy)
-    draw_focus(ideal_img, focus, ix, iy, ix, iy)
-
     # --------------------------
-    # 保存（UUIDでキャッシュ防止）
+    # 保存先
     # --------------------------
     out_dir = os.path.join(BASE_DIR, "..", "outputs")
     os.makedirs(out_dir, exist_ok=True)
 
-    uid = str(uuid.uuid4())
-
-    user_file  = f"user_{uid}.png"
-    ideal_file = f"ideal_{uid}.png"
-
-    cv2.imwrite(os.path.join(out_dir, user_file), user_img)
-    cv2.imwrite(os.path.join(out_dir, ideal_file), ideal_img)
+    user_path  = os.path.join(out_dir, "user.png")
+    ideal_path = os.path.join(out_dir, "ideal.png")
 
     # --------------------------
-    # ✅古い画像を削除（50枚超えたら整理）
+    # 必要な1枚だけ保存して描画
     # --------------------------
-    files = glob.glob(out_dir + "/*.png")
-    if len(files) > 50:
-        for f in files[:20]:
-            os.remove(f)
+    user_img  = save_frame(file_path, user_idx, user_path)
+    ideal_img = save_frame(success_path, ideal_idx, ideal_path)
+
+    if user_img is not None:
+        draw_focus(user_img, focus, ux, uy, ix, iy)
+        cv2.imwrite(user_path, user_img)
+
+    if ideal_img is not None:
+        draw_focus(ideal_img, focus, ix, iy, ix, iy)
+        cv2.imwrite(ideal_path, ideal_img)
+
+    # --------------------------
+    # ✅キャッシュ対策：毎回URLを変える
+    # --------------------------
+    cache_buster = int(time.time())
 
     # --------------------------
     # 結果返却
     # --------------------------
     return {
-        "diagnosis": {"weakness": weakness},
+        "diagnosis": {
+            "weakness": weakness,
+        },
         "menu": [f"{FOCUS_LABELS[focus]}を改善する練習を1つだけやりましょう"],
         "ai_text": f"改善ポイントは「{FOCUS_LABELS[focus]}」です。",
-        "ideal_image": f"/outputs/{ideal_file}",
-        "user_image": f"/outputs/{user_file}",
+
+        # 👇ここが最重要
+        "ideal_image": f"/outputs/ideal.png?v={cache_buster}",
+        "user_image":  f"/outputs/user.png?v={cache_buster}",
+
         "focus_label": FOCUS_LABELS[focus],
         "message": FOCUS_MESSAGES[focus],
     }
