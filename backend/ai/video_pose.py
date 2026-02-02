@@ -3,6 +3,8 @@ import numpy as np
 import cv2
 import logging
 
+import time
+
 from .video_pose_analyzer import extract_pose_landmarks
 from .normalize_pose import normalize_pose
 
