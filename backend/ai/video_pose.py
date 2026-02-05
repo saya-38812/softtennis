@@ -66,26 +66,14 @@ def draw_focus(frame, focus, ux, uy, ix, iy):
     # ① 打点高さ → 横ライン
     if focus == "impact_height":
 
-        cv2.line(frame, (0, iy), (w, iy), (0, 255, 0), 4)
-        cv2.line(frame, (0, uy), (w, uy), (0, 0, 255), 4)
+        pass
 
-        cv2.putText(frame, "Ideal Height", (20, iy - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-
-        cv2.putText(frame, "Your Height", (20, uy - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
 
     # ② 肘角度 → ターゲットマーク
     elif focus == "elbow_angle":
 
-        cv2.circle(frame, (ux, uy), 28, (0, 0, 255), 3)
-        cv2.circle(frame, (ux, uy), 6, (0, 0, 255), -1)
-
-        cv2.circle(frame, (ix, iy), 28, (0, 255, 0), 3)
-        cv2.circle(frame, (ix, iy), 6, (0, 255, 0), -1)
-
-        cv2.arrowedLine(frame, (ux, uy), (ix, iy),
-                        (255, 255, 255), 3, tipLength=0.3)
+        pass
+    
 
     # ③ 体軸ブレ → 縦ライン
     elif focus == "body_sway":
