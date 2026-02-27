@@ -348,13 +348,14 @@ def analyze_video(file_path, progress_cb=None):
 
         SUCCESS_CACHE["success"] = {
             "impact_index": s_impact_idx,
-            "diag": s_diag,
             "norm": s_norm,
             "pixel": s_diag["pixel"],
             "seq": s_seq,
             "img_orig": s_img_orig,
             "ideal_vals": ideal_representative,
         }
+        del s_diag
+        gc.collect()
     
     s_data = SUCCESS_CACHE["success"]
     success_impact_index = s_data["impact_index"]
@@ -509,20 +510,36 @@ def analyze_video(file_path, progress_cb=None):
     ux, uy = target_pixel[extracted_user_idx][lid]
     ix, iy = success_pixel[extracted_ideal_idx][lid]
 
-    # フレーム画像取得（元の動画からインパクトフレームを取得）
     cap1 = cv2.VideoCapture(file_path)
     cap1.set(cv2.CAP_PROP_POS_FRAMES, target_impact_index)
     ret, user_img = cap1.read()
     cap1.release()
 
     if not ret:
-        user_img = np.zeros((720, 1280, 3), dtype=np.uint8)
+        user_img = np.zeros((480, 640, 3), dtype=np.uint8)
 
-    ideal_img = ideal_img_orig.copy()
+    # メモリ節約: スナップショット画像も縮小
+    snap_max_w = 640
+    uh, uw = user_img.shape[:2]
+    if uw > snap_max_w:
+        snap_scale = snap_max_w / uw
+        user_img = cv2.resize(user_img, (int(uw * snap_scale), int(uh * snap_scale)))
+        ux, uy = int(ux * snap_scale), int(uy * snap_scale)
+        ix_s, iy_s = int(ix * snap_scale), int(iy * snap_scale)
+    else:
+        ix_s, iy_s = ix, iy
 
-    # 描画
-    draw_focus(user_img, focus, ux, uy, ix, iy)
-    draw_focus(ideal_img, focus, ix, iy, ix, iy)
+    ih, iw = ideal_img_orig.shape[:2]
+    if iw > snap_max_w:
+        i_scale = snap_max_w / iw
+        ideal_img = cv2.resize(ideal_img_orig, (int(iw * i_scale), int(ih * i_scale)))
+        ix_d, iy_d = int(ix * i_scale), int(iy * i_scale)
+    else:
+        ideal_img = ideal_img_orig.copy()
+        ix_d, iy_d = ix, iy
+
+    draw_focus(user_img, focus, ux, uy, ix_s, iy_s)
+    draw_focus(ideal_img, focus, ix_d, iy_d, ix_d, iy_d)
 
     # ==============================
     # ✅自動再起動を避けるため、backend配下から外す

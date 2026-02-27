@@ -120,11 +120,14 @@ def _warmup_cache():
 
             vp_mod.SCORE_FUNCS = build_score_funcs(ideal_representative)
             vp_mod.SUCCESS_CACHE["success"] = {
-                "impact_index": s_impact_idx, "diag": s_diag,
+                "impact_index": s_impact_idx,
                 "norm": s_norm, "pixel": s_diag["pixel"],
                 "seq": s_seq, "img_orig": s_img_orig,
                 "ideal_vals": ideal_representative,
             }
+            del s_diag
+            import gc as _gc
+            _gc.collect()
             logging.info("Warmup: お手本データの事前解析完了")
     except Exception as e:
         logging.warning(f"Warmup failed (non-critical): {e}")
