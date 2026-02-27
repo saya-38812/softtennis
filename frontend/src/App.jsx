@@ -25,15 +25,21 @@ function App() {
     // 動画追加（キューに貯める）
     // ============================
     const handleFileChange = (e) => {
-        const selectedFile = e.target.files[0];
-        if (!selectedFile) return;
+        const selectedFiles = Array.from(e.target.files);
+        if (selectedFiles.length === 0) return;
 
-        if (videoQueue.length >= REQUIRED_COUNT) return;
+        const availableSlots = REQUIRED_COUNT - videoQueue.length;
+        if (availableSlots <= 0) return;
 
-        // プレビュー用URL生成
-        const previewUrl = URL.createObjectURL(selectedFile);
-        setVideoQueue(prev => [...prev, { file: selectedFile, previewUrl }]);
+        // 追加可能な分だけ取得
+        const filesToAdd = selectedFiles.slice(0, availableSlots);
 
+        const newItems = filesToAdd.map(file => ({
+            file,
+            previewUrl: URL.createObjectURL(file)
+        }));
+
+        setVideoQueue(prev => [...prev, ...newItems]);
         setResult(null);
         setError(null);
 
@@ -173,10 +179,11 @@ function App() {
                         {videoQueue.length < REQUIRED_COUNT && (
                             <label className="file-label">
                                 <span className="upload-icon">📹</span>
-                                <div>動画を選択/撮影</div>
+                                <div>動画を選択/撮影 (複数可)</div>
                                 <input
                                     ref={fileInputRef}
                                     type="file"
+                                    multiple
                                     accept="video/mp4,video/quicktime"
                                     onChange={handleFileChange}
                                     disabled={loading}
