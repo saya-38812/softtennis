@@ -5,9 +5,9 @@ from typing import Dict, Optional
 # プレイヤーID（固定）
 PLAYER_ID = "local_player"
 
-# データディレクトリ
+# データディレクトリ (Reload監視を避けるため、backend配下から外す)
 BASE_DIR = os.path.dirname(__file__)
-DATA_DIR = os.path.join(BASE_DIR, "data", "players")
+DATA_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "server_storage", "players"))
 PLAYER_FILE = os.path.join(DATA_DIR, f"{PLAYER_ID}.json")
 
 
@@ -39,6 +39,8 @@ def load_last_score() -> Optional[Dict[str, float]]:
             "impact_height": float(data["impact_height"]),
             "elbow_angle": float(data["elbow_angle"]),
             "body_sway": float(data["body_sway"]),
+            "waist_speed": float(data.get("waist_speed", 0.0)),
+            "weight_transfer": float(data.get("weight_transfer", 0.0)),
         }
     
     except Exception:
@@ -63,5 +65,16 @@ def save_score(score_dict: Dict[str, float]) -> None:
     
     except Exception:
         # 例外は握りつぶす（MVP）
+        pass
+
+
+def clear_player_data() -> None:
+    """
+    プレイヤーデータを削除する
+    """
+    try:
+        if os.path.exists(PLAYER_FILE):
+            os.remove(PLAYER_FILE)
+    except Exception:
         pass
 

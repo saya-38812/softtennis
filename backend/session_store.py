@@ -3,8 +3,9 @@ import json
 from typing import Dict, List, Optional
 
 # データディレクトリ
+# データディレクトリ (Reload監視を避けるため、backend配下から外す)
 BASE_DIR = os.path.dirname(__file__)
-DATA_DIR = os.path.join(BASE_DIR, "data", "sessions")
+DATA_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "server_storage", "sessions"))
 
 
 def get_session_dir(session_id: str) -> str:
@@ -39,7 +40,7 @@ def append_score(session_id: str, score_dict: Dict[str, float]) -> None:
     
     Args:
         session_id: セッションID
-        score_dict: スコア辞書（impact_height, elbow_angle, body_sway）
+        score_dict: スコア辞書（impact_height, elbow_angle, body_sway, waist_speed, weight_transfer）
     """
     try:
         # ディレクトリが無ければ作成
@@ -98,6 +99,8 @@ def load_scores(session_id: str) -> List[Dict[str, float]]:
                     "impact_height": float(score["impact_height"]),
                     "elbow_angle": float(score["elbow_angle"]),
                     "body_sway": float(score["body_sway"]),
+                    "waist_speed": float(score.get("waist_speed", 0.0)),
+                    "weight_transfer": float(score.get("weight_transfer", 0.0)),
                 })
         
         return valid_scores
@@ -123,5 +126,18 @@ def clear_session(session_id: str) -> None:
     
     except Exception:
         # 例外は握りつぶす（MVP）
+        pass
+
+
+def clear_all_sessions() -> None:
+    """
+    全セッションデータを削除する
+    """
+    try:
+        if os.path.exists(DATA_DIR):
+            import shutil
+            shutil.rmtree(DATA_DIR)
+            os.makedirs(DATA_DIR, exist_ok=True)
+    except Exception:
         pass
 

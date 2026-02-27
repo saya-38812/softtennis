@@ -42,8 +42,10 @@ def normalize_pose(poses: np.ndarray) -> np.ndarray:
     # ================================
     valid = scale > 1e-6
 
-    if np.sum(valid) < 5:
-        raise ValueError("骨格が安定して検出できませんでした（scaleが小さすぎます）")
+    if np.sum(valid) < 1:
+        # 以前は raise ValueError していたが、
+        # 3本解析などで特定の動画だけ失敗する場合を考慮して空を返す
+        return np.zeros((0, 33, 2))
 
     poses = poses[valid]
     scale = scale[valid]

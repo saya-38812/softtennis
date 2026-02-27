@@ -8,5 +8,6 @@ openai
 opencv-python-headless
 mediapipe
 numpy
+imageio-ffmpeg
 
 

@@ -236,28 +236,19 @@ def calculate_waist_rotation_speed(waist_rotations: np.ndarray, fps: float = 30.
 
 def calculate_body_sway(poses: np.ndarray) -> np.ndarray:
     """
-    体軸ブレ量を計算
-    インパクト時の左右ブレを測定（骨盤中心から頭頂部へのベクトルのX座標成分）
-    入力: poses [frame数, landmark数, 2(xy)]
-    出力: [frame数] のブレ量配列（X座標の絶対値）
+    体軸の安定度を計算。
+    鼻(landmark 0)の位置のフレーム間移動量を返す。
+    値が小さいほど安定。サーブ中でも上手い選手はインパクト付近で頭がほぼ動かない。
+
+    入力: poses [frame数, landmark数, 2(xy)]  — 正規化済み(肩幅=1基準, 骨盤原点)
+    出力: [frame数-1] のフレーム間移動量
     """
-    if poses.shape[0] == 0:
-        return np.array([])
-    
-    # 骨盤中心を計算
-    pelvis_center = (poses[:, LEFT_HIP] + poses[:, RIGHT_HIP]) / 2
-    
-    # 頭頂部の目安として肩の中心を使用（より正確には鼻の位置を使用可能）
-    # 肩の中心
-    shoulder_center = (poses[:, LEFT_SHOULDER] + poses[:, RIGHT_SHOULDER]) / 2
-    
-    # 体軸ベクトル（骨盤中心から肩の中心へ）
-    body_axis = shoulder_center - pelvis_center
-    
-    # X座標成分の絶対値（左右ブレ量）
-    sway = np.abs(body_axis[:, 0])
-    
-    return sway
+    if poses.shape[0] < 2:
+        return np.array([0.0])
+
+    nose = poses[:, NOSE, :]
+    frame_diffs = np.linalg.norm(np.diff(nose, axis=0), axis=1)
+    return frame_diffs
 
 def calculate_impact_height(poses: np.ndarray, is_right_handed: bool = True) -> np.ndarray:
     """
