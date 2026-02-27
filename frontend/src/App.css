@@ -3,7 +3,8 @@
   min-height: 100vh;
   background: #ffffff;
   padding: 2rem 1rem;
-  padding-bottom: 45vh; /* アクションセクション分のスペース */
+  padding-bottom: 45vh;
+  /* アクションセクション分のスペース */
   display: flex;
   justify-content: center;
   align-items: flex-start;
@@ -381,6 +382,7 @@
     max-height: 0;
     transform: translateY(-10px);
   }
+
   to {
     opacity: 1;
     max-height: 1000px;
@@ -689,9 +691,145 @@
 
 
 /* レスポンシブデザイン */
+/* スロットコンテナ */
+.slot-container {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.video-slot {
+  width: 80px;
+  height: 100px;
+  background: #f0f4f8;
+  border: 2px dashed #cbd5e0;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.video-slot.has-video {
+  border: 2px solid #4a90e2;
+  background: black;
+}
+
+.video-preview-wrapper {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.video-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.remove-btn {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 22px;
+  height: 22px;
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.empty-slot {
+  color: #a0aec0;
+}
+
+.slot-num {
+  font-size: 1.5rem;
+  font-weight: 700;
+  opacity: 0.5;
+}
+
+/* セッションバッジ */
+.session-badge {
+  background: #ebf8ff;
+  color: #2b6cb0;
+  padding: 0.5rem 1rem;
+  border-radius: 9999px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  align-self: center;
+  margin-bottom: 1rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+/* フォーカスインジケーター */
+.focus-indicator {
+  text-align: center;
+  margin-bottom: 1.5rem;
+  font-size: 1.1rem;
+  color: #4a5568;
+}
+
+.focus-name {
+  color: #4a90e2;
+  font-weight: 700;
+  border-bottom: 2px solid #4a90e2;
+}
+
+/* 画像キャプション */
+.image-caption {
+  text-align: center;
+  font-size: 0.85rem;
+  color: #718096;
+  margin-top: 0.5rem;
+}
+
+/* スコアサマリー */
+.scores-summary {
+  display: flex;
+  justify-content: space-around;
+  background: #fafafa;
+  border-radius: 16px;
+  padding: 1.5rem;
+  margin: 1rem auto 2rem;
+  width: 100%;
+  max-width: 500px;
+  border: 1px solid #edf2f7;
+}
+
+.score-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.score-label {
+  font-size: 0.8rem;
+  color: #718096;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.score-val {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #2d3748;
+}
+
 @media (max-width: 768px) {
   .app-container {
     padding: 1rem 0.5rem;
+    padding-bottom: 40vh;
   }
 
   .app-header {
@@ -702,37 +840,26 @@
     font-size: 1.2rem;
   }
 
-  .tennis-ball-icon {
-    font-size: 1.5rem;
-  }
-
-  .app-subtitle {
-    font-size: 1rem;
-  }
-
   .upload-section {
     padding: 1.5rem;
   }
 
-  .result-card {
-    padding: 1.5rem;
+  .slot-container {
+    gap: 0.5rem;
   }
 
-  .file-label {
-    padding: 2rem 1.5rem;
+  .video-slot {
+    width: 70px;
+    height: 90px;
   }
 
-  .comparison-panels {
-    grid-template-columns: 1fr;
-    gap: 1rem;
+  .scores-summary {
+    padding: 1rem;
+    gap: 0.5rem;
   }
 
-  .section-title {
-    font-size: 1.1rem;
-  }
-
-  .section-icon {
-    font-size: 1.3rem;
+  .score-val {
+    font-size: 1.2rem;
   }
 
   .coach-message {
@@ -740,34 +867,10 @@
     padding: 1.5rem 1rem;
   }
 
-  .main-user-image {
-    max-width: 100%;
-  }
-
-  .small-ideal-image {
-    width: 80px;
-    top: 5px;
-    right: 5px;
-  }
-
-  .action-section {
-    min-height: 35vh;
-    padding: 1.5rem 1rem;
-  }
-
-  .short-message {
-    font-size: 1rem;
-    margin-bottom: 1rem;
-  }
-
   .huge-retry-button {
     width: 95%;
     padding: 1.5rem 2rem;
     font-size: 1.5rem;
-  }
-
-  .app-container {
-    padding-bottom: 40vh;
   }
 }
 

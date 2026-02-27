@@ -296,17 +296,19 @@ async def analyze(request: Request, file: UploadFile = File(...)):
             )
 
         # -------------------------
-        # 平均算出（リアルタイム）
+        # セッション結果計算（3本以上の場合）
         # -------------------------
-        mean_scores = {
-            key: sum(s[key] for s in all_scores) / len(all_scores)
-            for key in current_score.keys()
-        }
+        session_result = compute_session_result(all_scores)
+        
+        # 画像は最新の解析結果のものを使用
+        session_result["user_image"] = result.get("user_image", "")
+        session_result["ideal_image"] = result.get("ideal_image", "")
 
         # -------------------------
         # 改善計算
         # -------------------------
         last_score = load_last_score()
+        mean_scores = session_result["mean_scores"]
 
         if last_score is None:
             improvement = None
@@ -325,8 +327,12 @@ async def analyze(request: Request, file: UploadFile = File(...)):
             "scores": mean_scores,
             "improvement": improvement,
             "improvement_message": improvement_message,
-            "user_image": result.get("user_image", ""),
-            "ideal_image": result.get("ideal_image", ""),
+            "ai_text": session_result["ai_text"],
+            "practice": session_result["practice"],
+            "user_image": session_result["user_image"],
+            "ideal_image": session_result["ideal_image"],
+            "focus_label": session_result["focus_label"],
+            "count": count
         }
 
         return Response(
