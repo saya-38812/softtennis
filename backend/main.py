@@ -12,6 +12,7 @@ import json
 import asyncio
 import queue
 import threading
+import logging
 import numpy as np
 from dotenv import load_dotenv
 
@@ -30,6 +31,110 @@ load_dotenv()
 # FastAPI起動
 # ============================
 app = FastAPI()
+
+# ============================
+# ヘルスチェック（Render / ロードバランサ用）
+# ============================
+@app.get("/")
+async def health_check():
+    return {"status": "ok"}
+
+@app.head("/")
+async def health_check_head():
+    return Response(status_code=200)
+
+# ============================
+# 起動時にお手本データをバックグラウンドで事前解析
+# サーバーの応答開始を妨げずに、初回リクエスト高速化
+# ============================
+_warmup_done = threading.Event()
+
+def _warmup_cache():
+    """お手本動画を事前に解析してキャッシュに載せる"""
+    try:
+        logging.info("Warmup: お手本データの事前解析を開始...")
+        from ai.video_pose import SUCCESS_CACHE, detect_impact_frame, detect_contact_frame, build_score_funcs
+        from ai.video_pose import SCORE_FUNCS as _sf
+        from ai.video_pose_analyzer import extract_pose_landmarks
+        from ai.normalize_pose import normalize_pose
+        from ai.angle_utils import (
+            calculate_elbow_angle, calculate_body_sway,
+            calculate_impact_height, calculate_waist_rotation,
+            calculate_waist_rotation_speed, calculate_weight_left_right,
+        )
+
+        if "success" in SUCCESS_CACHE:
+            logging.info("Warmup: キャッシュ済み、スキップ")
+            return
+
+        success_path = os.path.join(os.path.dirname(__file__), "ai", "success.mp4")
+        if not os.path.exists(success_path):
+            logging.warning(f"Warmup: お手本動画が見つかりません: {success_path}")
+            return
+
+        import ai.video_pose as vp_mod
+        if "success" not in vp_mod.SUCCESS_CACHE:
+            s_impact_idx = vp_mod.detect_impact_frame(success_path)
+            s_diag = extract_pose_landmarks(success_path, s_impact_idx, range_sec=1.0)
+            import cv2 as cv2_warmup
+            cap_s = cv2_warmup.VideoCapture(success_path)
+            cap_s.set(cv2_warmup.CAP_PROP_POS_FRAMES, s_impact_idx)
+            ret, s_img_orig = cap_s.read()
+            cap_s.release()
+
+            s_norm = s_diag["norm"]
+            s_seq = normalize_pose(s_norm)
+            s_contact = detect_contact_frame(s_norm)
+            s_n = len(s_seq)
+            s_impact_local = min(s_contact, s_n - 1)
+            s_win = max(3, s_n // 5)
+            s_lo = max(0, s_impact_local - s_win)
+            s_hi = min(s_n, s_impact_local + s_win + 1)
+
+            s_impact_vals = calculate_impact_height(s_seq, True)
+            s_elbow_vals = calculate_elbow_angle(s_seq, True)
+            s_sway_vals = calculate_body_sway(s_seq)
+            s_waist_rots = calculate_waist_rotation(s_seq, True)
+            s_waist_spds = calculate_waist_rotation_speed(s_waist_rots)
+            s_weight_vals = calculate_weight_left_right(s_seq)
+
+            s_iv = float(np.min(s_impact_vals[s_lo:s_hi])) if s_hi > s_lo and len(s_impact_vals) > 0 else -0.5
+            s_ev = float(np.max(s_elbow_vals[s_lo:s_hi])) if s_hi > s_lo and len(s_elbow_vals) > 0 else 170.0
+            s_sway_lo = max(0, min(s_lo, len(s_sway_vals) - 1))
+            s_sway_hi = min(s_hi, len(s_sway_vals))
+            s_sway_slice = s_sway_vals[s_sway_lo:s_sway_hi] if s_sway_hi > s_sway_lo else s_sway_vals
+            s_sv = float(np.mean(s_sway_slice)) if len(s_sway_slice) > 0 else 0.05
+            sp_lo = max(0, s_lo - 1)
+            sp_hi = min(len(s_waist_spds), s_hi)
+            s_wv = float(np.max(s_waist_spds[sp_lo:sp_hi])) if sp_hi > sp_lo and len(s_waist_spds) > 0 else 4800.0
+            if len(s_weight_vals) > 1:
+                s_half = s_n // 2
+                s_wt = abs(float(np.mean(s_weight_vals[:s_half])) - float(np.mean(s_weight_vals[s_half:]))) + float(np.max(s_weight_vals))
+            else:
+                s_wt = 0.15
+
+            ideal_representative = {
+                "impact_height": s_iv, "elbow_angle": s_ev,
+                "body_sway": s_sv, "waist_speed": s_wv, "weight_transfer": s_wt,
+            }
+
+            vp_mod.SCORE_FUNCS = build_score_funcs(ideal_representative)
+            vp_mod.SUCCESS_CACHE["success"] = {
+                "impact_index": s_impact_idx, "diag": s_diag,
+                "norm": s_norm, "pixel": s_diag["pixel"],
+                "seq": s_seq, "img_orig": s_img_orig,
+                "ideal_vals": ideal_representative,
+            }
+            logging.info("Warmup: お手本データの事前解析完了")
+    except Exception as e:
+        logging.warning(f"Warmup failed (non-critical): {e}")
+    finally:
+        _warmup_done.set()
+
+@app.on_event("startup")
+async def startup_event():
+    t = threading.Thread(target=_warmup_cache, daemon=True)
+    t.start()
 
 # ============================
 # CORS（フロント許可）

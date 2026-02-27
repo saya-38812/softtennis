@@ -73,17 +73,11 @@ function App() {
             const reader = res.body.getReader();
             const decoder = new TextDecoder();
             let buffer = "";
+            let gotResult = false;
 
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split("\n");
-                buffer = lines.pop();
-
-                for (const line of lines) {
-                    if (!line.startsWith("data: ")) continue;
+            const processLine = (line) => {
+                if (!line.startsWith("data: ")) return;
+                try {
                     const payload = JSON.parse(line.slice(6));
 
                     if (payload.type === "progress") {
@@ -94,18 +88,43 @@ function App() {
                         setProgressPercent(100);
                         setResult(payload);
                         setPracticeCount(prev => prev + 1);
+                        gotResult = true;
                         if (payload.session_id && !sessionId) {
                             setSessionId(payload.session_id);
                         }
                     }
+                } catch (parseErr) {
+                    console.warn("SSE parse error:", parseErr, line);
                 }
+            };
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) {
+                    // flush remaining buffer
+                    if (buffer.trim()) {
+                        processLine(buffer.trim());
+                    }
+                    break;
+                }
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split("\n");
+                buffer = lines.pop();
+
+                for (const line of lines) {
+                    processLine(line);
+                }
+            }
+
+            if (!gotResult && !error) {
+                setError("解析結果を受信できませんでした。もう一度お試しください。");
             }
         } catch (err) {
             setError(err.message || "解析に失敗しました。");
         } finally {
             setLoading(false);
             setAnalyzingStep(0);
-            setProgressPercent(0);
         }
     };
 

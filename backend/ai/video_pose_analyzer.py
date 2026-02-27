@@ -7,16 +7,29 @@ from mediapipe.tasks.python import vision
 from typing import List, Any
 
 import os
+import threading
+
 BASE_DIR = os.path.dirname(__file__)
 MODEL_PATH = os.path.join(BASE_DIR, "models", "pose_landmarker_full.task")
 
 # ==============================
-# ✅モデルはグローバルで1回だけロード
+# モデルは初回使用時に1回だけロード（サーバー起動を高速化）
 # ==============================
-base = python.BaseOptions(model_asset_path=MODEL_PATH)
-detector = vision.PoseLandmarker.create_from_options(
-    vision.PoseLandmarkerOptions(base_options=base)
-)
+_detector = None
+_detector_lock = threading.Lock()
+
+def _get_detector():
+    global _detector
+    if _detector is None:
+        with _detector_lock:
+            if _detector is None:
+                logging.info("MediaPipe PoseLandmarker モデルをロード中...")
+                base = python.BaseOptions(model_asset_path=MODEL_PATH)
+                _detector = vision.PoseLandmarker.create_from_options(
+                    vision.PoseLandmarkerOptions(base_options=base)
+                )
+                logging.info("MediaPipe PoseLandmarker モデルのロード完了")
+    return _detector
 
 # ==============================
 # ✅骨格抽出（軽量版・インパクト周辺のみ）
@@ -38,6 +51,7 @@ def extract_pose_landmarks(video_path: str, impact_index: int = None, range_sec:
 
     ※ framesは返さない（Renderで落ちるため）
     """
+    detector = _get_detector()
 
     cap = cv2.VideoCapture(video_path)
     
