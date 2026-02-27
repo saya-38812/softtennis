@@ -170,3 +170,122 @@ def generate_ai_menu(diagnosis: Dict) -> str:
 
     except Exception as e:
         return f"AIコーチ生成エラー: {e}"
+
+
+# ============================
+# 身体感覚コーチング生成
+# ============================
+def generate_coaching_message(weakness_label: str) -> dict:
+    """
+    身体感覚の指示を生成（2行のみ）
+    
+    Args:
+        weakness_label: 弱点ラベル（例：「打点が低い」「体軸がブレている」「肘が曲がりすぎている」）
+    
+    Returns:
+        dict: {"ai_text": "...", "practice": "..."}
+    """
+    
+    try:
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            return {
+                "ai_text": "身体感覚で動きを改善しましょう",
+                "practice": "サーブを10回繰り返してください"
+            }
+        
+        client = OpenAI(api_key=api_key)
+        
+        # 弱点ラベルを日本語に変換
+        label_map = {
+            "impact_height": "打点が低い",
+            "elbow_angle": "肘が曲がりすぎている",
+            "body_sway": "体軸がブレている",
+        }
+        
+        # もしキーが渡された場合は変換
+        if weakness_label in label_map:
+            weakness_label = label_map[weakness_label]
+        
+        prompt = f"""以下の問題を身体感覚の比喩で指導してください。
+
+【問題】
+{weakness_label}
+
+【出力形式】
+必ず2行で出力してください。
+1行目：動作イメージ（身体感覚の比喩）
+2行目：具体的な単一練習（1つだけ）
+
+【例】
+ボールを"打つ"ではなく"空に押し上げる"感覚で振ってください
+タオルを上に放り投げる動きを10回繰り返しましょう
+
+【禁止事項】
+- 関節名、角度、数値説明は禁止
+- 長文解説は禁止
+- 複数の提案は禁止
+- 3行以上は禁止
+- 専門用語は禁止
+"""
+        
+        res = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": """あなたはジュニア選手を指導するスポーツコーチです。
+専門用語を使わず、身体感覚の比喩で指導してください。
+フォームの説明は禁止です。
+理解させるのではなく「動かす」ことが目的です。
+1回で実行できる指示のみ出してください。
+
+出力は必ず2行：
+1行目：動作イメージ
+2行目：具体的な単一練習
+
+禁止：
+関節名
+角度
+数値説明
+長文解説
+複数提案"""
+                },
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.7,
+        )
+        
+        content = res.choices[0].message.content.strip()
+        
+        # 改行で2行に分割
+        lines = [line.strip() for line in content.split("\n") if line.strip()]
+        
+        # 2行に分割
+        if len(lines) >= 2:
+            ai_text = lines[0]
+            practice = lines[1]
+        elif len(lines) == 1:
+            # 1行しかない場合は分割を試みる
+            parts = lines[0].split("。", 1)
+            if len(parts) >= 2:
+                ai_text = parts[0] + "。"
+                practice = parts[1]
+            else:
+                ai_text = lines[0]
+                practice = "サーブを10回繰り返しましょう"
+        else:
+            ai_text = "身体感覚で動きを改善しましょう"
+            practice = "サーブを10回繰り返しましょう"
+        
+        return {
+            "ai_text": ai_text,
+            "practice": practice
+        }
+    
+    except Exception as e:
+        print(f"コーチング生成エラー: {e}")
+        return {
+            "ai_text": "身体感覚で動きを改善しましょう",
+            "practice": "サーブを10回繰り返してください"
+        }

@@ -1,83 +1,107 @@
-import { useState, useEffect } from "react";
+import { useState, useRef } from "react";
 import axios from "axios";
 import "./App.css";
 
 function App() {
-  const API_BASE = "https://softtennis-zzdz.onrender.com";
+  // APIのベースURL（Vercelの環境変数から取得、未設定ならRenderのデフォルトURLを使用）
+  const API_BASE = process.env.REACT_APP_API_BASE || "https://softtennis-zzdz.onrender.com";
 
-  const [file, setFile] = useState(null);
   const [result, setResult] = useState(null);
-
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const [menuDetail, setMenuDetail] = useState("");
-  const [loadingMenu, setLoadingMenu] = useState(false);
+  const [improvement, setImprovement] = useState(null);
+  const [improvementMessage, setImprovementMessage] = useState("");
+
+  const [videoQueue, setVideoQueue] = useState([]);
+  const REQUIRED_COUNT = 5;
+
+  // ★ 追加：連続練習回数
+  const [practiceCount, setPracticeCount] = useState(0);
+
+  const fileInputRef = useRef(null);
 
   // ============================
-  // ファイル選択
+  // 動画追加（キューに貯める）
   // ============================
   const handleFileChange = (e) => {
-    setFile(e.target.files[0]);
+    const selectedFile = e.target.files[0];
+    if (!selectedFile) return;
+
+    if (videoQueue.length >= REQUIRED_COUNT) return;
+
+    setVideoQueue(prev => [...prev, selectedFile]);
     setResult(null);
     setError(null);
-    setMenuDetail("");
-  };
 
-  // ============================
-  // 動画解析
-  // ============================
-  const handleAnalyze = async () => {
-    if (!file) return;
-
-    setLoading(true);
-    setError(null);
-    setResult(null);
-    setMenuDetail("");
-
-    const formData = new FormData();
-    formData.append("file", file);
-
-    try {
-      const res = await axios.post(`${API_BASE}/analyze`, formData);
-
-      setResult(res.data);
-
-    } catch (err) {
-      setError("解析に失敗しました。もう一度お試しください。");
-      console.error(err);
-
-    } finally {
-      setLoading(false);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
     }
   };
 
   // ============================
-  // 最初の練習メニュー詳細を自動取得
+  // 解析（5本まとめて送信）
   // ============================
-  useEffect(() => {
-    if (!result?.menu?.length) return;
+  const handleAnalyze = async () => {
+    if (videoQueue.length !== REQUIRED_COUNT) return;
 
-    const firstMenu = result.menu[0];
+    setLoading(true);
+    setError(null);
 
-    setLoadingMenu(true);
+    let lastResponse = null;
 
-    axios
-      .post(`${API_BASE}/menu-detail`, {
-        menu_name: firstMenu,
-        diagnosis: result.diagnosis,
-      })
-      .then((res) => {
-        setMenuDetail(res.data.detail);
-      })
-      .catch(() => {
-        setMenuDetail("詳細を取得できませんでした。");
-      })
-      .finally(() => {
-        setLoadingMenu(false);
-      });
+    try {
+      for (let i = 0; i < videoQueue.length; i++) {
+        const formData = new FormData();
+        formData.append("file", videoQueue[i]);
 
-  }, [result]);
+        const res = await axios.post(`${API_BASE}/analyze`, formData);
+        lastResponse = res.data;
+      }
+
+      if (lastResponse) {
+        setResult(lastResponse);
+        setImprovement(lastResponse.improvement);
+        setImprovementMessage(lastResponse.improvement_message);
+        setPracticeCount(prev => prev + 1); // ★ 練習回数アップ
+      }
+
+    } catch (err) {
+      setError("解析に失敗しました。もう一度お試しください。");
+      console.error(err);
+    } finally {
+      setLoading(false);
+      setVideoQueue([]);
+    }
+  };
+
+  // ============================
+  // 継続（リセットではない）
+  // ============================
+  const handleContinue = () => {
+    setResult(null);
+    setError(null);
+    setVideoQueue([]);
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  // ============================
+  // 行動メッセージ生成
+  // ============================
+  const getActionMessage = () => {
+    if (practiceCount === 0) return "まず感覚を作りましょう";
+    if (practiceCount === 1) return "今の感覚でもう一度";
+
+    if (improvement && Math.abs(improvement.impact_height) > 0.05)
+      return "今の動き良いです";
+
+    return "そのまま続けてください";
+  };
 
   // ============================
   // 表示
@@ -89,112 +113,75 @@ function App() {
         {/* ヘッダー */}
         <header className="app-header">
           <span className="tennis-ball-icon">🎾</span>
-          <h1 className="app-title">ソフトテニス サーブフォームAIコーチ</h1>
+          <h1 className="app-title">サーブAIコーチ</h1>
         </header>
 
         {/* アップロード */}
-        <div className="upload-section">
-          <label className="file-label">
-            {file ? file.name : "動画ファイルを選択"}
-            <input
-              type="file"
-              accept="video/mp4"
-              onChange={handleFileChange}
-              disabled={loading}
-              className="file-input"
-            />
-          </label>
+        {!result && (
+          <div className="upload-section">
 
-          <button
-            onClick={handleAnalyze}
-            disabled={!file || loading}
-            className="analyze-button"
-          >
-            {loading ? "解析中…" : "解析を開始"}
-          </button>
-        </div>
+            <div className="progress-info">
+              撮影 {videoQueue.length} / {REQUIRED_COUNT}
+            </div>
 
-        {/* エラー */}
+            <label className="file-label">
+              動画を選択
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="video/mp4"
+                onChange={handleFileChange}
+                disabled={loading || videoQueue.length >= REQUIRED_COUNT}
+                className="file-input"
+              />
+            </label>
+
+            <button
+              onClick={handleAnalyze}
+              disabled={videoQueue.length !== REQUIRED_COUNT || loading}
+              className="analyze-button"
+            >
+              {loading
+                ? "解析中…"
+                : videoQueue.length < REQUIRED_COUNT
+                  ? `あと${REQUIRED_COUNT - videoQueue.length}本`
+                  : "チェック"}
+            </button>
+          </div>
+        )}
+
         {error && <div className="error-message">{error}</div>}
 
-        {/* 結果表示 */}
+        {/* 結果（行動画面） */}
         {result && (
-          <>
+          <div className="result-container">
 
-            {/* AIアドバイスセクション */}
-            {result.ideal_image && result.user_image && result.message && (
-              <div className="result-card">
-                <h2 className="section-title">
-                  <span className="section-icon">ℹ️</span>
-                  AIアドバイス
-                </h2>
-                <p className="ai-advice-message">{result.message}</p>
-                <div className="comparison-panels">
-                  <div className="comparison-panel bad-example">
-                    <div className="panel-header">
-                      <span className="x-icon"></span>
-                      <span className="panel-label">あなた</span>
-                    </div>
-                    <div className="panel-content">
-                      <img
-                        src={`${API_BASE}${result.user_image}`}
-                        alt="bad example"
-                        className="comparison-img"
-                      />
-                      <p className="panel-description">
-                        {result.focus_label && `${result.focus_label}が下がっている...`}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="comparison-panel good-example">
-                    <div className="panel-header">
-                      <span className="check-icon">✓</span>
-                      <span className="panel-label">良い例</span>
-                    </div>
-                    <div className="panel-content">
-                      <img
-                        src={`${API_BASE}${result.ideal_image}`}
-                        alt="good example"
-                        className="comparison-img"
-                      />
-                      <p className="panel-description good-description">
-                        {result.focus_label && `${result.focus_label}を高く引き上げよう!`}
-                      </p>
-                    </div>
-                  </div>
-                </div>
+            {/* コーチメッセージ */}
+            {result.ai_text && (
+              <div className="coach-message">
+                {result.ai_text}
               </div>
             )}
 
-            {/* アドバイスセクション */}
-            {result.message && (
-              <div className="result-card">
-                <h2 className="section-title">アドバイス</h2>
-                <p className="advice-text">
-                  {result.message}
-                  {result.focus_label && ` ${result.focus_label}が下がっています。${result.focus_label}をもっと高く引き上げて、打点を高くしましょう!`}
-                </p>
+            {/* フォーム画像 */}
+            {result.user_image && (
+              <div className="image-container">
+                <img
+                  src={`${API_BASE}${result.user_image}`}
+                  alt="your form"
+                  className="main-user-image"
+                />
               </div>
             )}
 
-            {/* 練習メニューセクション */}
-            {result.menu?.length > 0 && (
-              <div className="result-card">
-                <h2 className="section-title">
-                  <span className="section-icon">📋</span>
-                  練習メニュー
-                </h2>
-                <p className="menu-title">{result.menu[0]}</p>
-                {loadingMenu ? (
-                  <p className="loading-text">読み込み中…</p>
-                ) : (
-                  <p className="menu-detail" style={{ whiteSpace: "pre-line" }}>
-                    {menuDetail}
-                  </p>
-                )}
-              </div>
-            )}
-          </>
+            {/* 行動セクション */}
+            <div className="action-section">
+              <p className="short-message">{getActionMessage()}</p>
+              <button className="huge-retry-button" onClick={handleContinue}>
+                {practiceCount === 0 ? "はじめる" : "続ける"}
+              </button>
+            </div>
+          </div>
         )}
       </div>
     </div>

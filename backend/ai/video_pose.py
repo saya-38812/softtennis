@@ -41,7 +41,62 @@ FOCUS_LANDMARK = {
 }
 
 # ==============================
-# 腕が一番上の瞬間で固定する
+# 軽量インパクト検出（OpenCVのみ）
+# ==============================
+def detect_impact_frame(video_path: str) -> int:
+    """
+    動き量からインパクト候補を検出（MediaPipe不使用）
+    
+    Args:
+        video_path: 動画ファイルのパス
+    
+    Returns:
+        int: インパクトフレームのインデックス
+    """
+    cap = cv2.VideoCapture(video_path)
+    
+    if not cap.isOpened():
+        cap.release()
+        return 0
+    
+    frame_diffs = []
+    prev_gray = None
+    frame_count = 0
+    
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
+        
+        # グレースケール変換
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        
+        if prev_gray is not None:
+            # フレーム間差分を計算
+            diff = cv2.absdiff(prev_gray, gray)
+            diff_sum = np.sum(diff)
+            frame_diffs.append(diff_sum)
+        else:
+            frame_diffs.append(0)
+        
+        prev_gray = gray
+        frame_count += 1
+    
+    cap.release()
+    
+    if len(frame_diffs) == 0:
+        return 0
+    
+    # 差分合計が最大のフレーム = ラケット加速ピーク ≒ インパクト
+    impact_index = int(np.argmax(frame_diffs))
+    
+    logging.info(f"インパクト検出: フレーム {impact_index} / {frame_count}")
+    
+    return impact_index
+
+
+# ==============================
+# 腕が一番上の瞬間で固定する（後方互換用）
 # ==============================
 def detect_contact_frame(norm_landmarks):
 
@@ -111,9 +166,13 @@ def analyze_video(file_path):
     BASE_DIR = os.path.dirname(__file__)
     success_path = os.path.join(BASE_DIR, "success.mp4")
 
-    # 骨格抽出（norm + pixel）
-    success = extract_pose_landmarks(success_path)
-    target  = extract_pose_landmarks(file_path)
+    # 1. 軽量インパクト検出を先に行う
+    target_impact_index = detect_impact_frame(file_path)
+    success_impact_index = detect_impact_frame(success_path)
+
+    # 2. 骨格抽出（インパクト周辺のみ）
+    success = extract_pose_landmarks(success_path, success_impact_index)
+    target  = extract_pose_landmarks(file_path, target_impact_index)
 
     success_norm  = success["norm"]
     target_norm   = target["norm"]
@@ -124,14 +183,21 @@ def analyze_video(file_path):
     if len(success_norm) == 0 or len(target_norm) == 0:
         return {"menu": ["基本フォーム練習"], "ai_text": "解析できませんでした"}
 
+    logging.info(f"処理フレーム数: success={len(success_norm)}, target={len(target_norm)}")
+
     # 正規化（診断用）
     success_seq = normalize_pose(success_norm)
     target_seq  = normalize_pose(target_norm)
 
-    # 指標計算（3つ）
-    elbow_val  = np.mean(calculate_elbow_angle(target_seq, True))
-    impact_val = np.mean(calculate_impact_height(target_seq, True))
-    sway_val   = np.mean(calculate_body_sway(target_seq))
+    # 3. 指標計算（中央値で算出）
+    elbow_values = calculate_elbow_angle(target_seq, True)
+    impact_values = calculate_impact_height(target_seq, True)
+    sway_values = calculate_body_sway(target_seq)
+    
+    # 中央値を使用
+    elbow_val  = np.median(elbow_values) if len(elbow_values) > 0 else 0.0
+    impact_val = np.median(impact_values) if len(impact_values) > 0 else 0.0
+    sway_val   = np.median(sway_values) if len(sway_values) > 0 else 0.0
 
     weakness = {
         "impact_height": "low" if impact_val < -0.15 else "ok",
@@ -148,23 +214,23 @@ def analyze_video(file_path):
 
     focus = max(scores, key=scores.get)
 
-    # フレーム取得
-    user_idx  = detect_contact_frame(target_norm)
-    ideal_idx = detect_contact_frame(success_norm)
+    # フレーム取得（抽出したフレームの中央を使用）
+    extracted_user_idx  = len(target_norm) // 2 if len(target_norm) > 0 else 0
+    extracted_ideal_idx = len(success_norm) // 2 if len(success_norm) > 0 else 0
 
     lid = FOCUS_LANDMARK[focus]
 
-    ux, uy = target_pixel[user_idx][lid]
-    ix, iy = success_pixel[ideal_idx][lid]
+    ux, uy = target_pixel[extracted_user_idx][lid]
+    ix, iy = success_pixel[extracted_ideal_idx][lid]
 
-    # フレーム画像取得
+    # フレーム画像取得（元の動画からインパクトフレームを取得）
     cap1 = cv2.VideoCapture(file_path)
-    cap1.set(cv2.CAP_PROP_POS_FRAMES, user_idx)
+    cap1.set(cv2.CAP_PROP_POS_FRAMES, target_impact_index)
     _, user_img = cap1.read()
     cap1.release()
 
     cap2 = cv2.VideoCapture(success_path)
-    cap2.set(cv2.CAP_PROP_POS_FRAMES, ideal_idx)
+    cap2.set(cv2.CAP_PROP_POS_FRAMES, success_impact_index)
     _, ideal_img = cap2.read()
     cap2.release()
 
