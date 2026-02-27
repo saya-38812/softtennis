@@ -41,33 +41,38 @@ def _reencode_to_h264(src_path, dst_path, ffmpeg_path):
         return False
 
 
+MAX_OUTPUT_WIDTH = 640
+
 def render_analyzed_video(input_path, landmarks, output_path, impact_frame=None, start_frame=0, focus_landmark=None, progress_cb=None):
     """
-    動画全編に骨格を描画して保存する
-    ブラウザ再生のため H.264 に再エンコードする
+    骨格付き解析動画を生成する（メモリ効率重視）
+    ランドマークが存在する範囲のみ出力し、解像度を制限する
     """
     cap = cv2.VideoCapture(input_path)
     if not cap.isOpened():
         return False
 
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    orig_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    orig_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-    # 全フレーム出力
-    out_start = 0
-    out_end = total_frames
+    scale = min(1.0, MAX_OUTPUT_WIDTH / orig_w)
+    out_w = int(orig_w * scale)
+    out_h = int(orig_h * scale)
+
+    # ランドマーク範囲のみ出力（メモリ・時間節約）
+    out_start = max(0, start_frame)
+    out_end = min(total_frames, start_frame + len(landmarks))
 
     logging.info(
-        f"Render: total={total_frames} frames ({total_frames/fps:.1f}s), "
-        f"impact={impact_frame}, landmarks={len(landmarks)} from frame {start_frame}"
+        f"Render: frames {out_start}-{out_end} of {total_frames} ({(out_end-out_start)/fps:.1f}s), "
+        f"output={out_w}x{out_h}, impact={impact_frame}"
     )
 
-    # OpenCV は mp4v で一旦書き出し、後で ffmpeg で H.264 に変換
     tmp_path = output_path + ".tmp.mp4"
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(tmp_path, fourcc, fps, (width, height))
+    out = cv2.VideoWriter(tmp_path, fourcc, fps, (out_w, out_h))
     if not out.isOpened():
         cap.release()
         return False
@@ -81,44 +86,36 @@ def render_analyzed_video(input_path, landmarks, output_path, impact_frame=None,
         if not ret:
             break
 
+        if scale < 1.0:
+            frame = cv2.resize(frame, (out_w, out_h), interpolation=cv2.INTER_AREA)
+
         internal_idx = f_idx - start_frame
 
         if 0 <= internal_idx < len(landmarks):
             frame_lms = landmarks[internal_idx]
 
-            overlay = frame.copy()
-
-            for start_idx, end_idx in CONNECTIONS:
-                p1 = frame_lms[start_idx]
-                p2 = frame_lms[end_idx]
-
+            for s_idx, e_idx in CONNECTIONS:
+                p1 = frame_lms[s_idx]
+                p2 = frame_lms[e_idx]
                 if (p1[0] == 0 and p1[1] == 0) or (p2[0] == 0 and p2[1] == 0):
                     continue
-
-                pt1 = (int(p1[0]), int(p1[1]))
-                pt2 = (int(p2[0]), int(p2[1]))
-
-                cv2.line(overlay, pt1, pt2, (255, 255, 0), 8)
-                cv2.line(frame, pt1, pt2, (255, 255, 255), 2)
+                pt1 = (int(p1[0] * scale), int(p1[1] * scale))
+                pt2 = (int(p2[0] * scale), int(p2[1] * scale))
+                cv2.line(frame, pt1, pt2, (0, 255, 255), 3)
 
             for i_lm, p in enumerate(frame_lms):
                 if p[0] == 0 and p[1] == 0: continue
                 if i_lm not in [11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28]: continue
-
-                center = (int(p[0]), int(p[1]))
-                cv2.circle(overlay, center, 10, (0, 255, 255), -1)
+                center = (int(p[0] * scale), int(p[1] * scale))
                 cv2.circle(frame, center, 5, (255, 255, 255), -1)
-
-            alpha = 0.4
-            frame = cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0)
 
             if f_idx == impact_frame:
                 if focus_landmark is not None and focus_landmark < len(frame_lms):
                     fp = frame_lms[focus_landmark]
-                    f_center = (int(fp[0]), int(fp[1]))
-                    cv2.circle(frame, f_center, 30, (0, 165, 255), 2)
-                    cv2.putText(frame, "Impact Point", (f_center[0] + 40, f_center[1]),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 165, 255), 2)
+                    f_center = (int(fp[0] * scale), int(fp[1] * scale))
+                    cv2.circle(frame, f_center, 20, (0, 165, 255), 2)
+                    cv2.putText(frame, "Impact", (f_center[0] + 25, f_center[1]),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 165, 255), 2)
 
         out.write(frame)
 
@@ -128,13 +125,11 @@ def render_analyzed_video(input_path, landmarks, output_path, impact_frame=None,
     cap.release()
     out.release()
 
-    # H.264 再エンコード（ブラウザ互換）
     ffmpeg_path = _get_ffmpeg_path()
     if ffmpeg_path and _reencode_to_h264(tmp_path, output_path, ffmpeg_path):
         os.remove(tmp_path)
         logging.info(f"H.264 video saved: {output_path}")
     else:
-        # ffmpeg が無い場合は mp4v のまま使う（フォールバック）
         if os.path.exists(output_path):
             os.remove(output_path)
         os.rename(tmp_path, output_path)

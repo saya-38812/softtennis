@@ -1,4 +1,5 @@
 import os
+import gc
 import numpy as np
 import cv2
 import logging
@@ -364,11 +365,18 @@ def analyze_video(file_path, progress_cb=None):
 
     _report(10)
 
-    # 2. ユーザー動画の解析（全フレーム骨格抽出）
-    logging.info(f"Step 1: ユーザー動画の骨格抽出中（全フレーム）... {file_path}")
+    # 2. ユーザー動画: まず軽量にインパクトフレームを検出
+    logging.info(f"Step 1: インパクトフレーム検出中... {file_path}")
+    rough_impact = detect_impact_frame(file_path)
+    gc.collect()
+
+    _report(20)
+
+    # 3. インパクト±1秒だけMediaPipeで骨格抽出（メモリ節約）
+    logging.info(f"Step 2: インパクト周辺の骨格抽出中 (±1s around frame {rough_impact})...")
     def _pose_progress(ratio):
-        _report(10 + int(ratio * 50))
-    target_diag  = extract_pose_landmarks(file_path, progress_cb=_pose_progress)
+        _report(20 + int(ratio * 40))
+    target_diag = extract_pose_landmarks(file_path, rough_impact, range_sec=1.0, progress_cb=_pose_progress)
 
     target_norm   = target_diag["norm"]
     target_pixel  = target_diag["pixel"]
@@ -378,7 +386,6 @@ def analyze_video(file_path, progress_cb=None):
     if len(target_norm) == 0:
         return {"menu": ["基本フォーム練習"], "ai_text": "解析できませんでした"}
 
-    # 骨格データから手首最高点でインパクトフレームを特定
     contact_local = detect_contact_frame(target_norm)
     target_impact_index = target_start_frame + contact_local
     logging.info(
@@ -388,7 +395,6 @@ def analyze_video(file_path, progress_cb=None):
 
     logging.info(f"処理フレーム数: success={len(success_norm)}, target={len(target_norm)}")
 
-    # 正規化（診断用）
     target_seq  = normalize_pose(target_norm)
 
     if len(target_seq) == 0:
@@ -398,6 +404,7 @@ def analyze_video(file_path, progress_cb=None):
             "status": "error"
         }
 
+    gc.collect()
     _report(65)
 
     # 3. 指標計算
@@ -535,6 +542,11 @@ def analyze_video(file_path, progress_cb=None):
     user_video_path = os.path.join(out_dir, user_video_name)
     
     _report(70)
+
+    # 不要データを解放してからレンダリング
+    del target_norm, target_seq
+    del elbow_values, impact_values, sway_values, waist_rotations, waist_speeds, weight_transfers
+    gc.collect()
 
     logging.info(f"Step 3: 解析動画をレンダリング中... {user_video_name}")
     def _render_progress(ratio):
