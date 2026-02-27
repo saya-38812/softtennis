@@ -237,17 +237,26 @@ def calculate_waist_rotation_speed(waist_rotations: np.ndarray, fps: float = 30.
 def calculate_body_sway(poses: np.ndarray) -> np.ndarray:
     """
     体軸の安定度を計算。
-    鼻(landmark 0)の位置のフレーム間移動量を返す。
-    値が小さいほど安定。サーブ中でも上手い選手はインパクト付近で頭がほぼ動かない。
+    鼻(landmark 0)と骨盤中心の相対的な水平ずれ(X方向)のフレーム間変動を返す。
+    垂直方向の動きはサーブの自然な上下動なので除外し、
+    左右のブレのみを評価する。
+    外れ値の影響を軽減するため中央値ベースのロバスト統計を使用。
 
     入力: poses [frame数, landmark数, 2(xy)]  — 正規化済み(肩幅=1基準, 骨盤原点)
-    出力: [frame数-1] のフレーム間移動量
+    出力: [frame数-1] のフレーム間水平移動量
     """
     if poses.shape[0] < 2:
         return np.array([0.0])
 
-    nose = poses[:, NOSE, :]
-    frame_diffs = np.linalg.norm(np.diff(nose, axis=0), axis=1)
+    nose_x = poses[:, NOSE, 0]
+    frame_diffs = np.abs(np.diff(nose_x))
+
+    if len(frame_diffs) > 4:
+        median = np.median(frame_diffs)
+        mad = np.median(np.abs(frame_diffs - median)) + 1e-9
+        mask = frame_diffs < median + 3.0 * mad
+        frame_diffs = np.where(mask, frame_diffs, median)
+
     return frame_diffs
 
 def calculate_impact_height(poses: np.ndarray, is_right_handed: bool = True) -> np.ndarray:

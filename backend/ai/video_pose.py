@@ -49,7 +49,7 @@ FOCUS_LANDMARK = {
 _IDEAL_DEFAULTS = {
     "impact_height": -0.58,   # 手首Y（負=高い）
     "elbow_angle": 175.0,     # 度
-    "body_sway": 0.057,       # 鼻のフレーム間平均移動量（肩幅=1基準）
+    "body_sway": 0.030,       # 鼻の水平フレーム間中央値移動量（肩幅=1基準、X方向のみ）
     "waist_speed": 4800.0,    # deg/s peak
     "weight_transfer": 0.15,  # composite (half_diff+max)
 }
@@ -72,8 +72,8 @@ def build_score_funcs(ideal_vals=None):
         "impact_height": _make_score_fn(abs(iv["impact_height"]), 0.0, higher_is_better=True),
         # 肘: 大きいほど伸展。ideal≈175、90度は0点
         "elbow_angle": _make_score_fn(iv["elbow_angle"], 90.0, higher_is_better=True),
-        # ブレ: 小さいほど良い。idealの4倍を0点とする
-        "body_sway": _make_score_fn(iv["body_sway"], iv["body_sway"] * 4, higher_is_better=False),
+        # ブレ: 小さいほど良い。idealの8倍を0点とする（サーブ中の自然な動きを許容）
+        "body_sway": _make_score_fn(iv["body_sway"], iv["body_sway"] * 8, higher_is_better=False),
         # 腰速: 大きいほど良い。ideal≈4800、0は0点
         "waist_speed": _make_score_fn(iv["waist_speed"], 0.0, higher_is_better=True),
         # 体重移動: 大きいほど良い。ideal≈0.15、0は0点
@@ -103,12 +103,12 @@ def get_dynamic_advice(focus, val, score_100):
             return "Ideal", "You", "165°", f"{deg}°", "肘が曲がりすぎています。腕を大きく伸ばしてスイングしましょう"
 
     if focus == "body_sway":
-        if score_100 >= 80:
+        if score_100 >= 70:
             return "Target", "You", "安定", "Good!", "体軸は安定しています！"
-        elif score_100 >= 50:
-            return "Target", "You", "安定", "やや不安定", "インパクト時に頭の位置を固定する意識を持ちましょう"
+        elif score_100 >= 40:
+            return "Target", "You", "安定", "もう少し", "インパクト時に頭の位置を固定する意識を持ちましょう"
         else:
-            return "Target", "You", "安定", "不安定", "体が大きくブレています。下半身を安定させてスイングしましょう"
+            return "Target", "You", "安定", "改善しよう", "スイング中に体がブレやすいです。下半身を安定させて打ちましょう"
 
     if focus == "waist_speed":
         spd = int(val)
@@ -321,7 +321,7 @@ def analyze_video(file_path, progress_cb=None):
         s_sway_lo = max(0, min(s_lo, len(s_sway_vals) - 1))
         s_sway_hi = min(s_hi, len(s_sway_vals))
         s_sway_slice = s_sway_vals[s_sway_lo:s_sway_hi] if s_sway_hi > s_sway_lo else s_sway_vals
-        s_sv = float(np.mean(s_sway_slice)) if len(s_sway_slice) > 0 else 0.05
+        s_sv = float(np.median(s_sway_slice)) if len(s_sway_slice) > 0 else 0.05
 
         sp_lo = max(0, s_lo - 1)
         sp_hi = min(len(s_waist_spds), s_hi)
@@ -435,12 +435,12 @@ def analyze_video(file_path, progress_cb=None):
     else:
         elbow_val = 0.0
 
-    # 体軸ブレ: インパクト付近の鼻のフレーム間平均移動量（小さいほど安定）
+    # 体軸ブレ: インパクト付近の鼻の水平フレーム間移動量の中央値（小さいほど安定）
     if len(sway_values) > 0:
         sway_lo = max(0, min(lo, len(sway_values) - 1))
         sway_hi = min(hi, len(sway_values))
         sway_slice = sway_values[sway_lo:sway_hi] if sway_hi > sway_lo else sway_values
-        sway_val = float(np.mean(sway_slice))
+        sway_val = float(np.median(sway_slice))
     else:
         sway_val = 0.0
 
@@ -487,6 +487,13 @@ def analyze_video(file_path, progress_cb=None):
     if waist_val < waist_threshold:
         logging.info(f"waist_speed={waist_val:.1f} < threshold={waist_threshold:.1f}: カメラアングルにより計測不能と判定、スコア比較から除外")
         normalized_scores["waist_speed"] = 60.0  # 中立値（改善候補にならない）
+
+    # 体軸ブレは2D骨格検出のノイズに大きく左右される。
+    # 骨格トラッキングのジッターだけでブレが大きく見える場合があるため、
+    # スコアの下限を25点に設定して過度な低評価を防ぐ。
+    if normalized_scores["body_sway"] < 25:
+        logging.info(f"body_sway score={normalized_scores['body_sway']:.1f} は骨格ノイズの影響が疑われるため下限25に補正")
+        normalized_scores["body_sway"] = 25.0
 
     # 体重移動も同様に、2D投影の限界がある
     wt_threshold = ideal_vals["weight_transfer"] / 5
