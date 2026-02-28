@@ -373,11 +373,11 @@ def analyze_video(file_path, progress_cb=None):
 
     _report(20)
 
-    # 3. インパクト±1秒だけMediaPipeで骨格抽出（メモリ節約）
-    logging.info(f"Step 2: インパクト周辺の骨格抽出中 (±1s around frame {rough_impact})...")
+    # 3. インパクト±2秒だけMediaPipeで骨格抽出（トラッキング動画を長めに）
+    logging.info(f"Step 2: インパクト周辺の骨格抽出中 (±2s around frame {rough_impact})...")
     def _pose_progress(ratio):
         _report(20 + int(ratio * 40))
-    target_diag = extract_pose_landmarks(file_path, rough_impact, range_sec=1.0, progress_cb=_pose_progress)
+    target_diag = extract_pose_landmarks(file_path, rough_impact, range_sec=2.0, progress_cb=_pose_progress)
 
     target_norm   = target_diag["norm"]
     target_pixel  = target_diag["pixel"]

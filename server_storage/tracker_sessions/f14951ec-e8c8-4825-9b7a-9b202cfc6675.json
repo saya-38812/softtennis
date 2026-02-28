@@ -1,0 +1,20 @@
+{
+  "id": "f14951ec-e8c8-4825-9b7a-9b202cfc6675",
+  "date": "2026-02-28T10:18:53.958839Z",
+  "serves": [
+    {
+      "id": "657344be-3d72-4bda-8766-eb7383b4be56",
+      "session_id": "f14951ec-e8c8-4825-9b7a-9b202cfc6675",
+      "result": "IN",
+      "speed": null,
+      "timestamp": "2026-02-28T10:18:55.713780Z"
+    },
+    {
+      "id": "c8323b24-2a9e-49e6-87ab-5730b86af5fd",
+      "session_id": "f14951ec-e8c8-4825-9b7a-9b202cfc6675",
+      "result": "OUT",
+      "speed": null,
+      "timestamp": "2026-02-28T10:19:00.039240Z"
+    }
+  ]
+}

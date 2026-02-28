@@ -1,0 +1,357 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+:root {
+  --bg: #0f1419;
+  --surface: #1a2332;
+  --text: #e6edf3;
+  --muted: #8b949e;
+  --accent: #58a6ff;
+  --success: #3fb950;
+  --warning: #d29922;
+  --error: #f85149;
+}
+
+html {
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  line-height: 1.5;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+input[type="file"] {
+  font: inherit;
+  color: var(--text);
+}
+
+.container {
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.card {
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  border: none;
+  font-weight: 600;
+  transition: opacity 0.2s;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.btn-outline {
+  background: transparent;
+  color: var(--accent);
+  border: 2px solid var(--accent);
+}
+
+.btn-outline:hover:not(:disabled) {
+  background: rgba(88, 166, 255, 0.15);
+}
+
+.btn-block {
+  width: 100%;
+}
+
+.btn-success { background: var(--success); color: #fff; }
+.btn-warning { background: var(--warning); color: #0f1419; }
+.btn-danger { background: var(--error); color: #fff; }
+
+.mb-1 { margin-bottom: 0.5rem; }
+.mb-2 { margin-bottom: 1rem; }
+.mb-3 { margin-bottom: 1.5rem; }
+.mt-2 { margin-top: 1rem; }
+.text-center { text-align: center; }
+.text-muted { color: var(--muted); }
+
+/* Layout: header & tabs */
+.layout-header {
+  flex-shrink: 0;
+  background: var(--bg);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.layout-header-inner {
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+.layout-content {
+  flex: 1;
+  min-height: 0;
+  padding-top: 1.25rem;
+}
+
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: max(1.25rem, env(safe-area-inset-top)) 0 1.25rem;
+  margin-bottom: 0;
+}
+.header-left { display: flex; flex-direction: column; }
+.header-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.header-icon {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+.app-title { font-size: 1.25rem; font-weight: 700; margin: 0; color: inherit; }
+.app-subtitle { font-size: 0.75rem; color: var(--muted); margin-top: 0.15rem; }
+.header-right { display: flex; align-items: center; gap: 0.5rem; }
+
+.bottom-tabs {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--surface);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  z-index: 50;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+.bottom-tabs-inner {
+  max-width: 480px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-around;
+  padding: 0.5rem 0;
+}
+.tab-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.5rem 1rem;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.75rem;
+  border-radius: 8px;
+  transition: color 0.2s, background 0.2s;
+}
+.tab-item:hover { color: var(--text); }
+.tab-item.active { color: var(--accent); font-weight: 600; }
+.tab-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.tab-icon-svg {
+  width: 1.375rem;
+  height: 1.375rem;
+  flex-shrink: 0;
+}
+.tab-label { white-space: nowrap; }
+
+/* アップロード・解析画面の Lucide アイコン色 */
+.upload-video-icon { color: #2dd4bf; }
+.analyzing-hourglass-icon { color: #22d3ee; }
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* 解析中画面: 背景アニメーション（分析してる感） */
+.analyzing-screen-wrap {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  isolation: isolate;
+}
+.analyzing-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: var(--bg);
+  overflow: hidden;
+}
+.analyzing-bg::before {
+  content: "";
+  position: absolute;
+  inset: -50%;
+  background: radial-gradient(
+    ellipse 90% 60% at 50% 50%,
+    rgba(34, 211, 238, 0.15) 0%,
+    rgba(59, 130, 246, 0.08) 35%,
+    transparent 65%
+  );
+  animation: analyzing-glow 4s ease-in-out infinite;
+}
+.analyzing-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(34, 211, 238, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(34, 211, 238, 0.06) 1px, transparent 1px);
+  background-size: 24px 24px;
+  animation: analyzing-grid 20s linear infinite;
+}
+.analyzing-screen-wrap .analyzing-content {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+}
+@keyframes analyzing-glow {
+  0%, 100% { opacity: 0.7; transform: scale(1) rotate(0deg); }
+  50% { opacity: 1; transform: scale(1.15) rotate(3deg); }
+}
+@keyframes analyzing-grid {
+  0% { background-position: 0 0; }
+  100% { background-position: 24px 24px; }
+}
+
+/* 結果画面: 背景（緑系・落ち着いた仕上がり感）・スクロール可能 */
+.result-screen-wrap {
+  position: relative;
+  isolation: isolate;
+  min-height: 100vh;
+}
+.result-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 0;
+  background: var(--bg);
+  overflow: hidden;
+  pointer-events: none;
+}
+.result-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse 100% 80% at 50% 100%,
+    rgba(63, 185, 80, 0.18) 0%,
+    rgba(34, 197, 94, 0.08) 45%,
+    transparent 70%
+  );
+  animation: result-glow 6s ease-in-out infinite;
+}
+.result-bg::after {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  width: 140%;
+  height: 140%;
+  background-image: linear-gradient(
+    105deg,
+    transparent 48%,
+    rgba(63, 185, 80, 0.07) 50%,
+    transparent 52%
+  );
+  background-size: 60px 60px;
+  animation: result-lines 30s linear infinite;
+}
+.result-screen-wrap .result-content {
+  position: relative;
+  z-index: 1;
+}
+@keyframes result-glow {
+  0%, 100% { opacity: 0.8; }
+  50% { opacity: 1; }
+}
+@keyframes result-lines {
+  0% { transform: translate(0, 0); }
+  100% { transform: translate(60px, 30px); }
+}
+
+/* ホーム画面: 背景（アクセントの青・落ち着いた雰囲気） */
+.home-screen-wrap {
+  position: relative;
+  isolation: isolate;
+  min-height: 100vh;
+}
+.home-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 0;
+  background: var(--bg);
+  overflow: hidden;
+  pointer-events: none;
+}
+.home-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse 100% 70% at 50% 0%,
+    rgba(88, 166, 255, 0.12) 0%,
+    rgba(45, 212, 191, 0.06) 40%,
+    transparent 65%
+  );
+  animation: home-glow 8s ease-in-out infinite;
+}
+.home-screen-wrap .home-content {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+}
+@keyframes home-glow {
+  0%, 100% { opacity: 0.8; }
+  50% { opacity: 1; }
+}

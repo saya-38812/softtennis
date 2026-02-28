@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 import shutil
 import os
+from typing import Optional
 import traceback
 import uuid
 import json
@@ -18,9 +19,11 @@ from dotenv import load_dotenv
 
 from ai import video_pose as _vp
 from ai.video_pose import analyze_video, FOCUS_LABELS, FOCUS_LANDMARK
+from ai.serve_analysis import analyze_video as analyze_video_mvp
 from ai.coach_generator import generate_menu_detail, generate_coaching_message
 from player_store import load_last_score, save_score, clear_player_data
 from session_store import append_score, load_scores, clear_session, clear_all_sessions
+from tracker_store import start_session as tracker_start_session, append_serve, undo_last_serve, get_session as tracker_get_session, list_sessions as tracker_list_sessions, delete_session as tracker_delete_session
 
 # ============================
 # 環境変数読み込み
@@ -236,6 +239,149 @@ class MenuDetailRequest(BaseModel):
     menu_name: str
     diagnosis: dict
 
+
+# ============================
+# Serve Tracker MVP
+# ============================
+class ServeRecordRequest(BaseModel):
+    session_id: str
+    result: str  # "IN" | "OUT" | "FAULT"
+    speed_kmh: Optional[float] = None
+
+
+class DeleteSessionRequest(BaseModel):
+    session_id: str
+
+
+@app.post("/api/session/start")
+async def api_session_start():
+    """セッション開始。session_id を返す。"""
+    out = tracker_start_session()
+    return out
+
+
+@app.post("/api/serve")
+async def api_serve_record(body: ServeRecordRequest):
+    """サーブ1本を記録（IN / OUT / FAULT）。"""
+    if body.result not in ("IN", "OUT", "FAULT"):
+        raise HTTPException(status_code=400, detail="result must be IN, OUT, or FAULT")
+    serve = append_serve(body.session_id, body.result, speed_kmh=body.speed_kmh)
+    if serve is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {"ok": True, "serve": serve}
+
+
+@app.post("/api/serve/undo")
+async def api_serve_undo(body: dict):
+    """最後の1本を取り消す。body: { "session_id": "..." }"""
+    session_id = body.get("session_id")
+    if not session_id:
+        raise HTTPException(status_code=400, detail="session_id required")
+    ok = undo_last_serve(session_id)
+    return {"ok": ok}
+
+
+@app.post("/api/session/end")
+async def api_session_end(body: dict):
+    """セッション終了。集計結果を返す。"""
+    session_id = body.get("session_id")
+    if not session_id:
+        raise HTTPException(status_code=400, detail="session_id required")
+    s = tracker_get_session(session_id)
+    if s is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return s
+
+
+@app.get("/api/session/{session_id}")
+async def api_session_get(session_id: str):
+    """セッション詳細（集計済み）を取得。"""
+    s = tracker_get_session(session_id)
+    if s is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return s
+
+
+@app.get("/api/sessions")
+async def api_sessions_list():
+    """セッション一覧（履歴）。"""
+    return tracker_list_sessions()
+
+
+@app.post("/api/sessions/delete")
+async def api_sessions_delete(body: DeleteSessionRequest):
+    """セッション1件を削除する。"""
+    ok = tracker_delete_session(body.session_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {"ok": True}
+
+
+@app.delete("/api/session/{session_id}")
+async def api_session_delete(session_id: str):
+    """セッション1件を削除する（DELETE）。"""
+    ok = tracker_delete_session(session_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {"ok": True}
+
+
+@app.post("/api/analyze_speed")
+async def api_analyze_speed(video: UploadFile = File(..., alias="video_segment")):
+    """動画セグメントからサーブ速度を算出（MVP: 簡易実装）。"""
+    if not video.filename or not video.filename.lower().endswith((".mp4", ".webm", ".mov", ".avi")):
+        raise HTTPException(status_code=400, detail="動画ファイル（mp4/webm/mov/avi）を指定してください")
+    path = os.path.join(UPLOAD_DIR, f"speed_{uuid.uuid4().hex}_{os.path.basename(video.filename)}")
+    try:
+        with open(path, "wb") as f:
+            shutil.copyfileobj(video.file, f)
+        # MVP: 動画の長さ・解像度から簡易推定（実装は distance/time で置き換え可能）
+        import cv2
+        cap = cv2.VideoCapture(path)
+        fps = max(1e-6, cap.get(cv2.CAP_PROP_FPS) or 25)
+        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+        cap.release()
+        duration_sec = frame_count / fps if frame_count else 1.0
+        # 仮: コート幅〜10m を 0.3〜0.5 秒で通過と仮定 → 72〜120 km/h 程度
+        speed_kmh = round(80.0 + (duration_sec * 10), 1)
+        speed_kmh = min(120, max(50, speed_kmh))
+        return {"speed_kmh": speed_kmh}
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if os.path.exists(path):
+            try:
+                os.remove(path)
+            except Exception:
+                pass
+
+
+@app.post("/api/analyze_form")
+async def api_analyze_form(video: UploadFile = File(..., alias="video_segment")):
+    """動画からフォーム解析。既存 serve_analysis を利用。"""
+    if not video.filename or not video.filename.lower().endswith((".mp4", ".webm", ".mov", ".avi")):
+        raise HTTPException(status_code=400, detail="動画ファイルを指定してください")
+    path = os.path.join(UPLOAD_DIR, f"form_{uuid.uuid4().hex}_{os.path.basename(video.filename)}")
+    try:
+        with open(path, "wb") as f:
+            shutil.copyfileobj(video.file, f)
+        result = analyze_video_mvp(path)
+        return {
+            "feedback": result.get("feedback", []),
+            "metrics": result.get("metrics", {}),
+        }
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if os.path.exists(path):
+            try:
+                os.remove(path)
+            except Exception:
+                pass
+
+
 # ============================
 # improvement計算関数
 # ============================
@@ -394,12 +540,44 @@ def compute_session_result(scores: list):
     }
 
 # ============================
+# MVP用 動画解析API（JSON 1回返却）
+# ============================
+@app.post("/api/analyze")
+async def api_analyze(video: UploadFile = File(..., alias="video")):
+    """
+    MVP用: 動画を1本受け取り、スコア・フィードバック・メトリクスをJSONで返す。
+    既存の POST /analyze（SSE）とは別エンドポイント。
+    """
+    if not video.filename or not video.filename.lower().endswith((".mp4", ".webm", ".mov", ".avi")):
+        raise HTTPException(status_code=400, detail="動画ファイル（mp4/webm/mov/avi）を指定してください")
+    safe_name = f"mvp_{uuid.uuid4().hex}_{os.path.basename(video.filename)}"
+    path = os.path.join(UPLOAD_DIR, safe_name)
+    try:
+        with open(path, "wb") as f:
+            shutil.copyfileobj(video.file, f)
+        result = analyze_video_mvp(path)
+        return result
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if os.path.exists(path):
+            try:
+                os.remove(path)
+            except Exception:
+                pass
+
+
+# ============================
 # 動画解析API（SSE で進捗を送信）
 # ============================
 @app.post("/analyze")
-async def analyze(request: Request, file: UploadFile = File(...)):
+async def analyze(request: Request, file: UploadFile = File(..., alias="file")):
 
-    path = os.path.join(UPLOAD_DIR, file.filename)
+    if not file.filename or not file.filename.lower().endswith((".mp4", ".webm", ".mov", ".avi")):
+        raise HTTPException(status_code=400, detail="動画ファイル（mp4/webm/mov/avi）を指定してください")
+    safe_name = f"sse_{uuid.uuid4().hex}_{os.path.basename(file.filename)}"
+    path = os.path.join(UPLOAD_DIR, safe_name)
 
     session_id = request.headers.get("X-Session-ID")
     if not session_id:
