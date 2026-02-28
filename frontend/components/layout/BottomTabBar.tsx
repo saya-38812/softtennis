@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Target, History, Upload } from "lucide-react";
+import { Home, Target, History, Upload, type LucideIcon } from "lucide-react";
 import { TAB_CONFIG, type TabId } from "@/lib/constants";
 
 const pathByTab: Record<TabId, string> = {
@@ -12,7 +12,7 @@ const pathByTab: Record<TabId, string> = {
   upload: "/upload",
 };
 
-const tabIcons: Record<TabId, React.ComponentType<{ size?: number; className?: string }>> = {
+const tabIcons: Record<TabId, LucideIcon> = {
   home: Home,
   challenge: Target,
   history: History,

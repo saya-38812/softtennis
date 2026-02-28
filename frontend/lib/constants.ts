@@ -30,6 +30,9 @@ export const CHALLENGES: ChallengeDef[] = [
   { id: "advanced", name: "上級", nameEn: "Advanced", minServes: 40, minAccuracy: 75 },
 ];
 
+/** localStorage のチャレンジ解放状態用キー */
+export const CHALLENGE_UNLOCK_KEY = "soft-tennis-challenge-unlock-index";
+
 /**
  * 将来の指標候補（実装時はバックエンド対応が必要なものあり）
  * - 速度（平均/最大）: 計測保留中

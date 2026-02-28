@@ -83,7 +83,12 @@ export async function analyzeServeStreaming(
       const line = event.split("\n").find((l) => l.startsWith("data: "));
       if (!line) continue;
       try {
-        const data = JSON.parse(line.slice(6)) as { type: string; percent?: number; message?: string } & AnalyzeStreamResult;
+        const data = JSON.parse(line.slice(6)) as {
+          type: string;
+          percent?: number;
+          message?: string;
+          [key: string]: unknown;
+        };
         if (data.type === "progress" && typeof data.percent === "number") {
           onEvent({ type: "progress", percent: data.percent });
         } else if (data.type === "error") {
