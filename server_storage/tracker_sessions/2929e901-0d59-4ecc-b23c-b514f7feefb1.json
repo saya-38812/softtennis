@@ -1,0 +1,41 @@
+{
+  "id": "2929e901-0d59-4ecc-b23c-b514f7feefb1",
+  "date": "2026-02-28T12:34:40.724223Z",
+  "serves": [
+    {
+      "id": "53c33cc0-c042-48fc-9725-035192dcd431",
+      "session_id": "2929e901-0d59-4ecc-b23c-b514f7feefb1",
+      "result": "OUT",
+      "speed": null,
+      "timestamp": "2026-02-28T12:34:42.978391Z"
+    },
+    {
+      "id": "3753f2ce-e4d5-4875-bb81-22f9bdefbfd9",
+      "session_id": "2929e901-0d59-4ecc-b23c-b514f7feefb1",
+      "result": "IN",
+      "speed": null,
+      "timestamp": "2026-02-28T12:34:44.238606Z"
+    },
+    {
+      "id": "b58a2718-1e52-4542-bb16-9eecc1e4c920",
+      "session_id": "2929e901-0d59-4ecc-b23c-b514f7feefb1",
+      "result": "IN",
+      "speed": null,
+      "timestamp": "2026-02-28T12:34:45.389505Z"
+    },
+    {
+      "id": "6e8e5dc5-976d-4ead-a31c-782006d0b75f",
+      "session_id": "2929e901-0d59-4ecc-b23c-b514f7feefb1",
+      "result": "FAULT",
+      "speed": null,
+      "timestamp": "2026-02-28T12:34:46.373753Z"
+    },
+    {
+      "id": "d3e1aa0a-8993-4fb4-92e8-7c69523a8589",
+      "session_id": "2929e901-0d59-4ecc-b23c-b514f7feefb1",
+      "result": "IN",
+      "speed": null,
+      "timestamp": "2026-02-28T12:34:47.719601Z"
+    }
+  ]
+}

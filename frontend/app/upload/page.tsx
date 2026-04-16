@@ -1,112 +1,36 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { Video, Hourglass } from "lucide-react";
 import {
-  analyzeServe,
-  analyzeServeStreaming,
-  type AnalyzeResponse,
-  type AnalyzeStreamResult,
+  startSession,
+  recordServe,
+  runFormAnalysis,
 } from "@/lib/api";
+import { fromAnalysis, type UploadResultData } from "@/lib/uploadResult";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
-
-/** 結果画面用の統一データ（SSE 結果 or MVP 結果から変換） */
-export interface DisplayResult {
+/** 結果表示用（videoUrl を追加したローカル型） */
+interface DisplayResult extends UploadResultData {
   videoUrl: string | null;
-  userImageUrl: string | null;
-  idealImageUrl: string | null;
-  overallScore: number;
-  improvementMessage: string;
-  focusLabel: string;
-  focusAdvice: string;
-  technical: { label: string; value: number; key: string }[];
-  aiText: string;
-  practice: string[];
 }
 
-const TECHNICAL_KEYS: { key: string; label: string }[] = [
-  { key: "impact_height", label: "トス高さ" },
-  { key: "elbow_angle", label: "肘の余裕" },
-  { key: "body_sway", label: "体の安定" },
-  { key: "waist_speed", label: "腰のキレ" },
-  { key: "weight_transfer", label: "体重移動" },
-];
-
-function fromStreamResult(r: AnalyzeStreamResult): DisplayResult {
-  const ns = r.normalized_scores ?? {};
-  const technical = TECHNICAL_KEYS.map(({ key, label }) => ({
-    label,
-    value: Math.round(ns[key] ?? 0),
-    key,
-  }));
-  const overallScore = technical.length
-    ? Math.round(technical.reduce((a, t) => a + t.value, 0) / technical.length)
-    : 0;
-  return {
-    videoUrl: r.user_video ? `${API_BASE}${r.user_video}` : null,
-    userImageUrl: r.user_image ? `${API_BASE}${r.user_image}` : null,
-    idealImageUrl: r.ideal_image ? `${API_BASE}${r.ideal_image}` : null,
-    overallScore,
-    improvementMessage: r.improvement_message ?? "",
-    focusLabel: r.focus_label ?? "体軸のブレ",
-    focusAdvice: r.comparison?.action_tip ?? "スイング中に体を安定させましょう。",
-    technical,
-    aiText: r.ai_text ?? "",
-    practice: Array.isArray(r.practice) ? r.practice : typeof r.practice === "string" ? [r.practice] : [],
-  };
-}
-
-const SAMPLE_MVP: AnalyzeResponse = {
-  score: 85,
-  feedback: [
-    "前回より打点が高くなっています。",
-    "スイング中に体がブレやすいです。下半身を安定させて打ちましょう。",
+const SAMPLE_RESULT: DisplayResult = {
+  videoUrl: null,
+  overallScore: 78,
+  improvementMessage: "前回より打点が高くなっています",
+  focusLabel: "体の安定",
+  focusAdvice: "スイング中に体がブレやすいです。下半身を安定させて打ちましょう。",
+  technical: [
+    { key: "impact_height", label: "トス高さ", value: 82 },
+    { key: "elbow_angle", label: "肘の余裕", value: 75 },
+    { key: "body_sway", label: "体の安定", value: 65 },
+    { key: "waist_speed", label: "腰のキレ", value: 85 },
+    { key: "weight_transfer", label: "体重移動", value: 83 },
   ],
-  metrics: {
-    elbow_angle: 118,
-    body_sway: 0.35,
-    impact_height: 1.92,
-  },
+  aiText: "打点は良くなっています。体軸をキープする意識で振るとさらに安定します。",
+  practice: ["タオルを上に放り投げる動きを10回繰り返しましょう"],
 };
-
-function getTechnicalFromMetrics(metrics: AnalyzeResponse["metrics"]) {
-  const elbow = Math.round(Math.max(0, Math.min(100, (metrics.elbow_angle - 85) * 2.5)));
-  const bodyStability = Math.round(Math.max(0, Math.min(100, 100 - metrics.body_sway * 190)));
-  const toss = Math.round(Math.max(0, Math.min(100, (metrics.impact_height - 1) * 55)));
-  return [
-    { key: "impact_height", label: "トス高さ", value: Math.min(98, Math.max(50, toss)) },
-    { key: "elbow_angle", label: "肘の余裕", value: Math.min(95, Math.max(50, elbow)) },
-    { key: "body_sway", label: "体の安定", value: Math.max(20, bodyStability) },
-    { key: "waist_speed", label: "腰のキレ", value: 98 },
-    { key: "weight_transfer", label: "体重移動", value: 98 },
-  ];
-}
-
-function fromMvpResult(r: AnalyzeResponse): DisplayResult {
-  const technical = getTechnicalFromMetrics(r.metrics);
-  const weakest = technical.reduce((a, b) => (a.value <= b.value ? a : b));
-  const improvementLabels: Record<string, string> = {
-    body_sway: "スイング中に体がブレやすいです。下半身を安定させて打ちましょう。",
-    elbow_angle: "肘の角度に余裕を持たせ、ラケットをスムーズに振りましょう。",
-    impact_height: "トスを安定した高さに上げ、打点を一定にしましょう。",
-    waist_speed: "腰の回転を意識してスイングにキレを出しましょう。",
-    weight_transfer: "前足への体重移動を意識して打ちましょう。",
-  };
-  return {
-    videoUrl: null,
-    userImageUrl: null,
-    idealImageUrl: null,
-    overallScore: r.score,
-    improvementMessage: r.feedback[0] ?? "",
-    focusLabel: weakest.label,
-    focusAdvice: improvementLabels[weakest.key] ?? "",
-    technical,
-    aiText: r.feedback[1] ?? "フォームを確認して繰り返し練習しましょう。",
-    practice: r.feedback.length > 2 ? r.feedback.slice(2) : [],
-  };
-}
 
 export default function UploadPage() {
   const [file, setFile] = useState<File | null>(null);
@@ -114,6 +38,13 @@ export default function UploadPage() {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<DisplayResult | null>(null);
+  const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -126,29 +57,49 @@ export default function UploadPage() {
     setLoading(true);
     setProgress(0);
 
-    const applyStreamResult = (streamResult: AnalyzeStreamResult) => {
-      setResult(fromStreamResult(streamResult));
-    };
+    if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+    progressIntervalRef.current = setInterval(() => {
+      setProgress((p) => {
+        if (p >= 95) return p;
+        return p + Math.random() * 8 + 2;
+      });
+    }, 600);
 
     try {
-      const streamResult = await analyzeServeStreaming(file, (ev) => {
-        if (ev.type === "progress") setProgress(ev.percent);
-        if (ev.type === "error") setError(ev.message);
-        if (ev.type === "result") applyStreamResult(ev.result);
-      });
-      if (streamResult) applyStreamResult(streamResult);
-      else if (!error) setError("解析に失敗しました");
-    } catch {
-      setError(null);
-      try {
-        const mvpData = await analyzeServe(file);
-        setResult(fromMvpResult(mvpData));
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "解析に失敗しました");
+      const { session_id } = await startSession();
+      const { serve } = await recordServe(session_id, "IN", 0);
+      if (!serve || typeof serve !== "object" || !("id" in serve)) {
+        throw new Error("サーブの記録に失敗しました");
       }
+      const serveId = (serve as { id: string }).id;
+      const blob = new Blob([await file.arrayBuffer()], { type: file.type });
+      const session = await runFormAnalysis(session_id, blob, [
+        { id: serveId, result: "IN", timestamp_sec: 0 },
+      ]);
+      const analysisMap = session.analysis ?? {};
+      const analysis = analysisMap[serveId] ?? null;
+      if (analysis) {
+        const apiBase = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
+        let videoUrl: string | null = null;
+        if (session.tracking_video) {
+          videoUrl = `${apiBase}/outputs/${session.tracking_video}`;
+        } else if (session.video_path && session.id) {
+          videoUrl = `${apiBase}/api/sessions/${session.id}/video`;
+        }
+        const displayResult: DisplayResult = { ...fromAnalysis(analysis), videoUrl };
+        setResult(displayResult);
+      } else {
+        setError("解析結果を取得できませんでした");
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "解析に失敗しました");
     } finally {
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+        progressIntervalRef.current = null;
+      }
       setLoading(false);
-      setProgress(0);
+      setProgress(100);
     }
   };
 
@@ -159,7 +110,7 @@ export default function UploadPage() {
   };
 
   const showSampleResult = () => {
-    setResult(fromMvpResult(SAMPLE_MVP));
+    setResult(SAMPLE_RESULT);
     setError(null);
   };
 
@@ -171,10 +122,27 @@ export default function UploadPage() {
     return <ResultScreen data={result} onRecordAgain={handleAnalyzeAnother} />;
   }
 
-  // アップロード前: 円形破線 + カメラアイコン + 文言（画像どおり）
   return (
-    <main className="container" style={{ paddingTop: "2rem", minHeight: "60vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "100%" }}>
+    <main
+      className="container"
+      style={{
+        paddingTop: "2rem",
+        minHeight: "60vh",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <form
+        onSubmit={handleSubmit}
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          width: "100%",
+        }}
+      >
         <label
           htmlFor="video-upload"
           style={{
@@ -199,7 +167,14 @@ export default function UploadPage() {
           >
             <Video size={56} strokeWidth={1.5} className="upload-video-icon" />
           </span>
-          <span style={{ fontSize: "1.25rem", fontWeight: 700, color: "#fff", marginBottom: "0.5rem" }}>
+          <span
+            style={{
+              fontSize: "1.25rem",
+              fontWeight: 700,
+              color: "#fff",
+              marginBottom: "0.5rem",
+            }}
+          >
             動画をアップロード
           </span>
           <span style={{ fontSize: "0.9rem", color: "var(--muted)" }}>
@@ -223,7 +198,13 @@ export default function UploadPage() {
           </p>
         )}
         {error && (
-          <p style={{ color: "var(--error)", fontSize: "0.875rem", marginTop: "0.75rem" }}>
+          <p
+            style={{
+              color: "var(--error)",
+              fontSize: "0.875rem",
+              marginTop: "0.75rem",
+            }}
+          >
             {error}
           </p>
         )}
@@ -237,7 +218,17 @@ export default function UploadPage() {
         </button>
       </form>
       <p className="text-muted" style={{ fontSize: "0.8rem", marginTop: "2rem" }}>
-        <button type="button" onClick={showSampleResult} style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline" }}>
+        <button
+          type="button"
+          onClick={showSampleResult}
+          style={{
+            background: "none",
+            border: "none",
+            color: "var(--accent)",
+            cursor: "pointer",
+            textDecoration: "underline",
+          }}
+        >
           サンプル結果を表示
         </button>
       </p>
@@ -245,7 +236,13 @@ export default function UploadPage() {
   );
 }
 
-function ResultScreen({ data, onRecordAgain }: { data: DisplayResult; onRecordAgain: () => void }) {
+function ResultScreen({
+  data,
+  onRecordAgain,
+}: {
+  data: DisplayResult;
+  onRecordAgain: () => void;
+}) {
   const {
     videoUrl,
     overallScore,
@@ -266,109 +263,273 @@ function ResultScreen({ data, onRecordAgain }: { data: DisplayResult; onRecordAg
   return (
     <div className="result-screen-wrap">
       <div className="result-bg" aria-hidden />
-      <main className="container result-content" style={{ paddingTop: "1rem", paddingBottom: "2rem" }}>
-      {videoUrl && (
-        <div className="card" style={{ padding: 0, marginBottom: "1rem", overflow: "hidden" }}>
-          <video
-            src={videoUrl}
-            controls
-            autoPlay
-            muted
-            playsInline
-            loop
-            style={{ width: "100%", display: "block" }}
-          />
-          <div style={{ padding: "0.5rem 0.75rem", fontSize: "0.75rem", color: "var(--muted)" }}>
-            骨格トラッキング付き解析動画
-          </div>
-        </div>
-      )}
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", marginBottom: "1rem" }}>
-        <div className="card" style={{ padding: "1rem" }}>
-          <div style={{ fontSize: "0.7rem", color: "var(--muted)", marginBottom: "0.35rem", letterSpacing: "0.05em" }}>
-            OVERALL SCORE
-          </div>
-          <p style={{ fontSize: "1.75rem", fontWeight: 700, color: "var(--success)", margin: "0 0 0.5rem 0" }}>
-            {overallScore} / 100
-          </p>
-          {improvementMessage && (
-            <div style={{ border: "1px solid var(--success)", borderRadius: 8, padding: "0.5rem 0.6rem", background: "rgba(63,185,80,0.08)" }}>
-              <span style={{ fontSize: "0.8rem", color: "var(--success)" }}>{improvementMessage}</span>
+      <main
+        className="container result-content"
+        style={{ paddingTop: "1rem", paddingBottom: "2rem" }}
+      >
+        {videoUrl && (
+          <div
+            className="card"
+            style={{
+              padding: 0,
+              marginBottom: "1rem",
+              overflow: "hidden",
+            }}
+          >
+            <video
+              src={videoUrl}
+              controls
+              autoPlay
+              muted
+              playsInline
+              loop
+              style={{ width: "100%", display: "block" }}
+            />
+            <div
+              style={{
+                padding: "0.5rem 0.75rem",
+                fontSize: "0.75rem",
+                color: "var(--muted)",
+              }}
+            >
+              骨格トラッキング付き解析動画
             </div>
-          )}
-        </div>
-        <div className="card" style={{ padding: "1rem" }}>
-          <div style={{ fontSize: "0.7rem", color: "var(--muted)", marginBottom: "0.35rem", letterSpacing: "0.05em" }}>
-            改善ポイント
           </div>
-          <p style={{ fontSize: "1rem", fontWeight: 700, color: "#fff", margin: "0 0 0.5rem 0" }}>
-            {focusLabel}
-          </p>
-          <div style={{ fontSize: "0.75rem", color: "var(--muted)", marginBottom: "0.25rem" }}>
-            Target <span style={{ marginLeft: "0.25rem" }}>You</span>
-          </div>
-          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginBottom: "0.35rem" }}>
-            <span style={{ fontSize: "0.8rem", color: "var(--muted)" }}>安定</span>
-            <span style={{ fontSize: "0.8rem", color: "var(--warning)", fontWeight: 600 }}>改善しよう</span>
-          </div>
-          <p style={{ fontSize: "0.8rem", color: "var(--accent)", lineHeight: 1.4, margin: 0 }}>
-            {focusAdvice}
-          </p>
-        </div>
-      </div>
+        )}
 
-      <div style={{ marginBottom: "1.25rem" }}>
-        <h2 style={{ fontSize: "0.7rem", color: "var(--muted)", letterSpacing: "0.08em", marginBottom: "0.75rem" }}>
-          TECHNICAL BREAKDOWN
-        </h2>
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-          {technical.map(({ key, label, value }) => (
-            <div key={key} style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-              <span style={{ fontSize: "0.875rem", color: "var(--text)", minWidth: 100 }}>{label}</span>
-              <div style={{ flex: 1, height: 8, background: "var(--bg)", borderRadius: 4, overflow: "hidden" }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: "0.75rem",
+            marginBottom: "1rem",
+          }}
+        >
+          <div className="card" style={{ padding: "1rem" }}>
+            <div
+              style={{
+                fontSize: "0.7rem",
+                color: "var(--muted)",
+                marginBottom: "0.35rem",
+                letterSpacing: "0.05em",
+              }}
+            >
+              OVERALL SCORE
+            </div>
+            <p
+              style={{
+                fontSize: "1.75rem",
+                fontWeight: 700,
+                color: "var(--success)",
+                margin: "0 0 0.5rem 0",
+              }}
+            >
+              {overallScore} / 100
+            </p>
+            {improvementMessage && (
+              <div
+                style={{
+                  border: "1px solid var(--success)",
+                  borderRadius: 8,
+                  padding: "0.5rem 0.6rem",
+                  background: "rgba(63,185,80,0.08)",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: "0.8rem",
+                    color: "var(--success)",
+                  }}
+                >
+                  {improvementMessage}
+                </span>
+              </div>
+            )}
+          </div>
+          <div className="card" style={{ padding: "1rem" }}>
+            <div
+              style={{
+                fontSize: "0.7rem",
+                color: "var(--muted)",
+                marginBottom: "0.35rem",
+                letterSpacing: "0.05em",
+              }}
+            >
+              改善ポイント
+            </div>
+            <p
+              style={{
+                fontSize: "1rem",
+                fontWeight: 700,
+                color: "#fff",
+                margin: "0 0 0.5rem 0",
+              }}
+            >
+              {focusLabel}
+            </p>
+            <p
+              style={{
+                fontSize: "0.8rem",
+                color: "var(--accent)",
+                lineHeight: 1.4,
+                margin: 0,
+              }}
+            >
+              {focusAdvice}
+            </p>
+          </div>
+        </div>
+
+        <div style={{ marginBottom: "1.25rem" }}>
+          <h2
+            style={{
+              fontSize: "0.7rem",
+              color: "var(--muted)",
+              letterSpacing: "0.08em",
+              marginBottom: "0.75rem",
+            }}
+          >
+            TECHNICAL BREAKDOWN
+          </h2>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "0.6rem",
+            }}
+          >
+            {technical.map(({ key, label, value }) => (
+              <div
+                key={key}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.75rem",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: "0.875rem",
+                    color: "var(--text)",
+                    minWidth: 100,
+                  }}
+                >
+                  {label}
+                </span>
                 <div
                   style={{
-                    width: `${value}%`,
-                    height: "100%",
-                    background: barColor(key, value),
+                    flex: 1,
+                    height: 8,
+                    background: "var(--bg)",
                     borderRadius: 4,
-                    transition: "width 0.3s ease",
+                    overflow: "hidden",
                   }}
-                />
+                >
+                  <div
+                    style={{
+                      width: `${value}%`,
+                      height: "100%",
+                      background: barColor(key, value),
+                      borderRadius: 4,
+                      transition: "width 0.3s ease",
+                    }}
+                  />
+                </div>
+                <span
+                  style={{
+                    fontSize: "0.875rem",
+                    fontWeight: 600,
+                    color: barColor(key, value),
+                    minWidth: 28,
+                  }}
+                >
+                  {value}
+                </span>
               </div>
-              <span style={{ fontSize: "0.875rem", fontWeight: 600, color: barColor(key, value), minWidth: 28 }}>{value}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="card" style={{ padding: "1rem", marginBottom: "1.5rem", border: "1px solid var(--success)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
-          <span style={{ fontSize: "0.7rem", letterSpacing: "0.05em", color: "var(--muted)" }}>AI COACH</span>
-          <span style={{ fontSize: "0.7rem", color: "var(--warning)", display: "flex", alignItems: "center", gap: "0.25rem" }}>
-            ⚡ ONLINE
-          </span>
-        </div>
-        {aiText && <p style={{ fontSize: "0.9rem", color: "var(--text)", lineHeight: 1.6, margin: 0 }}>{aiText}</p>}
-        {practice.length > 0 && (
-          <ul style={{ margin: "0.5rem 0 0 1.25rem", padding: 0, fontSize: "0.875rem", color: "var(--muted)" }}>
-            {practice.map((p, i) => (
-              <li key={i}>{p}</li>
             ))}
-          </ul>
-        )}
-      </div>
+          </div>
+        </div>
 
-      <button
-        type="button"
-        onClick={onRecordAgain}
-        className="btn btn-primary btn-block"
-        style={{ padding: "0.9rem" }}
-      >
-        もう一回撮影
-      </button>
-    </main>
+        <div
+          className="card"
+          style={{
+            padding: "1rem",
+            marginBottom: "1.5rem",
+            border: "1px solid var(--success)",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem",
+              marginBottom: "0.5rem",
+            }}
+          >
+            <span
+              style={{
+                fontSize: "0.7rem",
+                letterSpacing: "0.05em",
+                color: "var(--muted)",
+              }}
+            >
+              AI COACH
+            </span>
+            <span
+              style={{
+                fontSize: "0.7rem",
+                color: "var(--warning)",
+                display: "flex",
+                alignItems: "center",
+                gap: "0.25rem",
+              }}
+            >
+              ⚡ ONLINE
+            </span>
+          </div>
+          {aiText && (
+            <p
+              style={{
+                fontSize: "0.9rem",
+                color: "var(--text)",
+                lineHeight: 1.6,
+                margin: 0,
+              }}
+            >
+              {aiText}
+            </p>
+          )}
+          {practice.length > 0 && (
+            <ul
+              style={{
+                margin: "0.5rem 0 0 1.25rem",
+                padding: 0,
+                fontSize: "0.875rem",
+                color: "var(--muted)",
+              }}
+            >
+              {practice.map((p, i) => (
+                <li key={i}>{p}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <button
+          type="button"
+          onClick={onRecordAgain}
+          className="btn btn-primary btn-block"
+          style={{ padding: "0.9rem" }}
+        >
+          もう一回撮影
+        </button>
+
+        <p style={{ marginTop: "1rem", textAlign: "center" }}>
+          <Link href="/" style={{ color: "var(--accent)" }}>
+            ← ホームへ
+          </Link>
+        </p>
+      </main>
     </div>
   );
 }
@@ -382,7 +543,10 @@ function AnalyzingScreen({ progress: progressProp }: { progress?: number }) {
     }, 800);
     return () => clearInterval(t);
   }, [progressProp]);
-  const progress = typeof progressProp === "number" && progressProp >= 0 ? progressProp : localProgress;
+  const progress =
+    typeof progressProp === "number" && progressProp >= 0
+      ? progressProp
+      : localProgress;
 
   return (
     <div className="analyzing-screen-wrap">
@@ -409,15 +573,33 @@ function AnalyzingScreen({ progress: progressProp }: { progress?: number }) {
             alignItems: "center",
             justifyContent: "center",
             marginBottom: "1.5rem",
-            boxShadow: "0 0 24px rgba(34, 211, 238, 0.4), 0 0 48px rgba(34, 211, 238, 0.2)",
+            boxShadow:
+              "0 0 24px rgba(34, 211, 238, 0.4), 0 0 48px rgba(34, 211, 238, 0.2)",
           }}
         >
-          <Hourglass size={56} strokeWidth={1.5} className="analyzing-hourglass-icon" />
+          <Hourglass
+            size={56}
+            strokeWidth={1.5}
+            className="analyzing-hourglass-icon"
+          />
         </div>
-        <p style={{ fontSize: "1.1rem", fontWeight: 600, color: "#fff", marginBottom: "0.35rem" }}>
+        <p
+          style={{
+            fontSize: "1.1rem",
+            fontWeight: 600,
+            color: "#fff",
+            marginBottom: "0.35rem",
+          }}
+        >
           AIが解析しています...
         </p>
-        <p style={{ fontSize: "0.9rem", color: "var(--muted)", marginBottom: "1.25rem" }}>
+        <p
+          style={{
+            fontSize: "0.9rem",
+            color: "var(--muted)",
+            marginBottom: "1.25rem",
+          }}
+        >
           骨格の動きを検出しています
         </p>
         <div style={{ width: "100%", maxWidth: 280, marginBottom: "1rem" }}>
@@ -447,10 +629,11 @@ function AnalyzingScreen({ progress: progressProp }: { progress?: number }) {
             fontSize: "2.5rem",
             fontWeight: 700,
             color: "#22d3ee",
-            textShadow: "0 0 20px rgba(34, 211, 238, 0.8), 0 0 40px rgba(34, 211, 238, 0.4)",
+            textShadow:
+              "0 0 20px rgba(34, 211, 238, 0.8), 0 0 40px rgba(34, 211, 238, 0.4)",
           }}
         >
-          {progress}%
+          {Math.round(progress)}%
         </p>
       </main>
     </div>

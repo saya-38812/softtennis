@@ -2,8 +2,8 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Soft Tennis Serve Analyzer",
-  description: "Upload a serve video and get AI-based feedback on your form.",
+  title: "サーブノート — ソフトテニス サーブ練習",
+  description: "ソフトテニスのサーブ練習を記録し、録画からAIでフォーム解析できるアプリ",
 };
 
 export const viewport: Viewport = {
@@ -12,6 +12,7 @@ export const viewport: Viewport = {
 };
 
 import { LayoutWithTabs } from "@/components/layout";
+import { SessionVideoProvider } from "@/contexts/SessionVideoContext";
 
 export default function RootLayout({
   children,
@@ -21,7 +22,9 @@ export default function RootLayout({
   return (
     <html lang="ja">
       <body style={{ margin: 0, minHeight: "100vh", background: "#0f1419", color: "#e6edf3" }}>
-        <LayoutWithTabs>{children}</LayoutWithTabs>
+        <SessionVideoProvider>
+          <LayoutWithTabs>{children}</LayoutWithTabs>
+        </SessionVideoProvider>
       </body>
     </html>
   );

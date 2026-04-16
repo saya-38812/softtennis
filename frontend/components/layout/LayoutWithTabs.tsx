@@ -9,12 +9,11 @@ const TAB_BAR_HEIGHT = "72px";
 
 const HEADER_TITLES: Record<string, { title: string; subtitle?: string }> = {
   "/": { title: APP_NAME, subtitle: APP_SUBTITLE },
-  "/challenge": { title: "チャレンジ", subtitle: "今日のチャレンジ" },
   "/history": { title: "履歴", subtitle: "Past practices" },
-  "/upload": { title: "アップロード", subtitle: "動画をアップロード" },
-  "/result": { title: "結果", subtitle: "解析結果" },
+  "/stats": { title: "統計", subtitle: "サーブ成功率" },
   "/session-result": { title: "セッション結果", subtitle: "" },
   "/practice": { title: "練習", subtitle: "サーブ記録" },
+  "/upload": { title: "動画アップロード", subtitle: "フォーム解析" },
 };
 
 function getHeaderForPath(pathname: string | null) {

@@ -4,34 +4,37 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
-  getTrackerSession,
+  getSession,
   recordServe,
   undoServe,
   type TrackerSession,
   type ServeResult,
 } from "@/lib/api";
-import { CHALLENGES } from "@/lib/constants";
 import { TrackerStats } from "@/components/tracker/TrackerStats";
+import { useSessionVideo } from "@/contexts/SessionVideoContext";
 
 function PracticeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const sessionId = searchParams.get("session_id");
-  const challengeId = searchParams.get("challenge");
-  const challenge = challengeId ? CHALLENGES.find((c) => c.id === challengeId) ?? null : null;
+  const { setVideoBlob } = useSessionVideo();
 
   const [session, setSession] = useState<TrackerSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [recording, setRecording] = useState<ServeResult | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const recordingStartTimeRef = useRef<number>(0);
 
   const fetchSession = useCallback(async () => {
     if (!sessionId) return;
     try {
-      const data = await getTrackerSession(sessionId);
+      const data = await getSession(sessionId);
       setSession(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load session");
@@ -66,6 +69,7 @@ function PracticeContent() {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
         }
+        startRecording(stream);
       } catch (e) {
         if (!cancelled) setCameraError("カメラを起動できませんでした");
       }
@@ -73,16 +77,57 @@ function PracticeContent() {
     startCamera();
     return () => {
       cancelled = true;
+      stopRecording();
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
     };
   }, [sessionId]);
 
+  function startRecording(stream: MediaStream) {
+    if (mediaRecorderRef.current?.state === "recording") return;
+    chunksRef.current = [];
+    const mime = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
+      ? "video/webm;codecs=vp9"
+      : "video/webm";
+    const mr = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 2500000 });
+    mr.ondataavailable = (e) => {
+      if (e.data.size > 0) chunksRef.current.push(e.data);
+    };
+    mr.start(1000);
+    mediaRecorderRef.current = mr;
+    recordingStartTimeRef.current = Date.now();
+    setIsRecording(true);
+  }
+
+  function stopRecording(): Promise<Blob | null> {
+    return new Promise((resolve) => {
+      const mr = mediaRecorderRef.current;
+      if (!mr || mr.state !== "recording") {
+        resolve(null);
+        return;
+      }
+      mr.onstop = () => {
+        const blob = chunksRef.current.length
+          ? new Blob(chunksRef.current, { type: mr.mimeType })
+          : null;
+        mediaRecorderRef.current = null;
+        setIsRecording(false);
+        resolve(blob);
+      };
+      mr.stop();
+    });
+  }
+
+  const getTimestampSec = useCallback(() => {
+    return (Date.now() - recordingStartTimeRef.current) / 1000;
+  }, []);
+
   const handleRecord = async (result: ServeResult) => {
     if (!sessionId || recording) return;
     setRecording(result);
+    const timestamp_sec = getTimestampSec();
     try {
-      await recordServe(sessionId, result);
+      await recordServe(sessionId, result, timestamp_sec);
       await fetchSession();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Record failed");
@@ -101,11 +146,11 @@ function PracticeContent() {
     }
   };
 
-  const handleEndSession = () => {
+  const handleEndSession = async () => {
     if (!sessionId) return;
-    const params = new URLSearchParams({ session_id: sessionId });
-    if (challenge) params.set("challenge", challenge.id);
-    router.push(`/session-result?${params.toString()}`);
+    const blob = await stopRecording();
+    if (blob) setVideoBlob(blob);
+    router.push(`/session-result?session_id=${sessionId}`);
   };
 
   if (loading && !session) {
@@ -131,16 +176,12 @@ function PracticeContent() {
 
   return (
     <main className="container practice-screen" style={{ paddingTop: "0.5rem", paddingBottom: "1rem" }}>
-      {challenge && (
-        <div className="card" style={{ padding: "0.5rem 0.75rem", marginBottom: "0.5rem" }}>
-          <span style={{ fontSize: "0.75rem", color: "var(--muted)" }}>今日のチャレンジ</span>
-          <span style={{ fontSize: "0.875rem" }}>
-            {challenge.minServes}本 • IN率{challenge.minAccuracy}%以上
-          </span>
-        </div>
-      )}
       <TrackerStats session={session} />
-
+      {isRecording && (
+        <p style={{ fontSize: "0.75rem", color: "var(--muted)", marginBottom: "0.5rem" }}>
+          ● 録画中
+        </p>
+      )}
       <div className="card" style={{ padding: "0.5rem", marginBottom: "1rem" }}>
         <div style={{ aspectRatio: "4/3", background: "var(--bg)", borderRadius: 8, overflow: "hidden", position: "relative" }}>
           <video
@@ -167,15 +208,6 @@ function PracticeContent() {
           disabled={!!recording}
         >
           IN
-        </button>
-        <button
-          type="button"
-          className="btn btn-warning"
-          style={{ flex: 1, minWidth: 80 }}
-          onClick={() => handleRecord("OUT")}
-          disabled={!!recording}
-        >
-          OUT
         </button>
         <button
           type="button"

@@ -61,7 +61,7 @@ def extract_pose_landmarks(video_path: str, impact_index: int = None, range_sec:
             "pixel": np.zeros((0, 0, 0)),
         }
     
-    # 総フレーム数を取得
+    # 総フレーム数を取得（WebM等では0になることがある）
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     
     # 処理するフレーム範囲を決定
@@ -69,9 +69,9 @@ def extract_pose_landmarks(video_path: str, impact_index: int = None, range_sec:
     if impact_index is not None:
         fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
         buffer = int(fps * range_sec)
-        # インパクト前後 range_sec
+        # インパクト前後 range_sec（total_frames=0のときは上限制限しない）
         start_frame = max(0, impact_index - buffer)
-        end_frame = min(total_frames - 1, impact_index + buffer)
+        end_frame = (impact_index + buffer) if total_frames <= 0 else min(total_frames - 1, impact_index + buffer)
         frame_indices = list(range(start_frame, end_frame + 1))
         logging.info(f"解析範囲: {start_frame} to {end_frame} ({len(frame_indices)} frames)")
     else:

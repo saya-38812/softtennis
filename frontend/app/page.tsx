@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { startTrackerSession } from "@/lib/api";
+import { startSession } from "@/lib/api";
 
 function PlayIcon() {
   return (
@@ -23,7 +23,7 @@ export default function HomePage() {
     setStarting(true);
     setError(null);
     try {
-      const { session_id } = await startTrackerSession();
+      const { session_id } = await startSession();
       router.push(`/practice?session_id=${session_id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to start session");
@@ -76,7 +76,7 @@ export default function HomePage() {
               練習を始める
             </span>
             <span style={{ fontSize: "0.9rem", color: "var(--muted)", textAlign: "center", marginBottom: "1rem" }}>
-              サーブ練習をセッションで記録。IN/OUT/FAULT・フォームを可視化します。
+              サーブ練習をセッションで記録。IN・FAULT・フォームを可視化します。
             </span>
           </label>
           <button
@@ -96,6 +96,10 @@ export default function HomePage() {
               {error}
             </p>
           )}
+
+          <p style={{ marginTop: "0.75rem", fontSize: "0.8rem", color: "var(--muted)" }}>
+            録画ができない場合：<Link href="/history" style={{ color: "var(--accent)" }}>履歴</Link>で「サンプルデータを読み込む」から結果画面を確認できます。
+          </p>
         </div>
       </main>
     </div>

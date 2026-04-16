@@ -1,0 +1,48 @@
+{
+  "id": "35e38b15-f035-4567-97ba-15bf0f53f449",
+  "date": "2026-02-28T11:20:28.938578Z",
+  "serves": [
+    {
+      "id": "8416f6c9-cb00-49d9-b455-c674dedf284f",
+      "session_id": "35e38b15-f035-4567-97ba-15bf0f53f449",
+      "result": "IN",
+      "speed": null,
+      "timestamp": "2026-02-28T11:20:36.093295Z"
+    },
+    {
+      "id": "b253d353-ba04-4e73-abf3-32d2bca2ff3a",
+      "session_id": "35e38b15-f035-4567-97ba-15bf0f53f449",
+      "result": "IN",
+      "speed": null,
+      "timestamp": "2026-02-28T11:20:36.955789Z"
+    },
+    {
+      "id": "c1501428-6400-4840-81f8-721f14dcd83c",
+      "session_id": "35e38b15-f035-4567-97ba-15bf0f53f449",
+      "result": "IN",
+      "speed": null,
+      "timestamp": "2026-02-28T11:20:37.786796Z"
+    },
+    {
+      "id": "4652f61e-b651-41f5-a712-f1fa5a3bfb21",
+      "session_id": "35e38b15-f035-4567-97ba-15bf0f53f449",
+      "result": "OUT",
+      "speed": null,
+      "timestamp": "2026-02-28T11:20:38.923815Z"
+    },
+    {
+      "id": "02288bed-ed4e-4c97-960f-880836934d7a",
+      "session_id": "35e38b15-f035-4567-97ba-15bf0f53f449",
+      "result": "OUT",
+      "speed": null,
+      "timestamp": "2026-02-28T11:20:39.852373Z"
+    },
+    {
+      "id": "cbb79d56-b8a4-4aee-8bed-e422e0254c1d",
+      "session_id": "35e38b15-f035-4567-97ba-15bf0f53f449",
+      "result": "FAULT",
+      "speed": null,
+      "timestamp": "2026-02-28T11:20:40.917565Z"
+    }
+  ]
+}

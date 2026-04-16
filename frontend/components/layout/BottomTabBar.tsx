@@ -2,33 +2,33 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Target, History, Upload, type LucideIcon } from "lucide-react";
+import { Home, Upload, BarChart2, History, type LucideIcon } from "lucide-react";
 import { TAB_CONFIG, type TabId } from "@/lib/constants";
 
 const pathByTab: Record<TabId, string> = {
   home: "/",
-  challenge: "/challenge",
-  history: "/history",
   upload: "/upload",
+  stats: "/stats",
+  history: "/history",
 };
 
 const tabIcons: Record<TabId, LucideIcon> = {
   home: Home,
-  challenge: Target,
-  history: History,
   upload: Upload,
+  stats: BarChart2,
+  history: History,
 };
+
+function getActiveTab(pathname: string | null): TabId {
+  if (pathname === "/history") return "history";
+  if (pathname === "/stats") return "stats";
+  if (pathname === "/upload") return "upload";
+  return "home";
+}
 
 export function BottomTabBar() {
   const pathname = usePathname();
-  const activeTab: TabId =
-    pathname === "/challenge"
-      ? "challenge"
-      : pathname === "/history"
-        ? "history"
-        : pathname === "/upload" || pathname === "/result"
-          ? "upload"
-          : "home";
+  const activeTab = getActiveTab(pathname);
 
   return (
     <nav className="bottom-tabs" role="tablist" aria-label="メイン">

@@ -41,9 +41,15 @@ export function SessionList({ sessions, onDelete }: SessionListProps) {
                 <div style={{ fontWeight: 600 }}>
                   {new Date(s.date).toLocaleString("ja-JP")}
                 </div>
-                <div style={{ fontSize: "0.875rem", color: "var(--muted)", marginTop: "0.25rem" }}>
-                  {s.total_attempts}本 &nbsp; IN {s.in_count} / OUT {s.out_count} &nbsp; IN率 {accuracy}%
-                </div>
+                {s.source === "upload" ? (
+                  <p style={{ fontSize: "0.875rem", color: "var(--muted)", marginTop: "0.25rem", margin: "0.25rem 0 0 0" }}>
+                    アップロードから
+                  </p>
+                ) : (
+                  <div style={{ fontSize: "0.875rem", color: "var(--muted)", marginTop: "0.25rem" }}>
+                    {s.total_attempts}本 &nbsp; IN {s.in_count} / FAULT {s.fault_count ?? 0} &nbsp; IN率 {accuracy}%
+                  </div>
+                )}
               </Link>
               {onDelete && (
                 <button

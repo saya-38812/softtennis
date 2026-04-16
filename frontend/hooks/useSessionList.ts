@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { listTrackerSessions, deleteTrackerSession, type TrackerSession } from "@/lib/api";
+import { listSessions, deleteSession as apiDeleteSession, type TrackerSession } from "@/lib/api";
 
 export function useSessionList() {
   const [sessions, setSessions] = useState<TrackerSession[]>([]);
@@ -11,7 +11,7 @@ export function useSessionList() {
   const refresh = useCallback(() => {
     setLoading(true);
     setError(null);
-    listTrackerSessions()
+    listSessions()
       .then(setSessions)
       .catch((e) => setError(e instanceof Error ? e.message : "Failed"))
       .finally(() => setLoading(false));
@@ -24,7 +24,7 @@ export function useSessionList() {
   const deleteSession = useCallback(
     async (sessionId: string) => {
       try {
-        await deleteTrackerSession(sessionId);
+        await apiDeleteSession(sessionId);
         setSessions((prev) => prev.filter((s) => s.id !== sessionId));
       } catch (e) {
         setError(e instanceof Error ? e.message : "Delete failed");

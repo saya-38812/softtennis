@@ -196,12 +196,20 @@ def detect_impact_frame(video_path: str) -> int:
     if len(frame_diffs) == 0:
         return 0
     
-    # フレーム間差分が最大のフレーム。ただし最初と最後の方は無視（ノイズ回避）
+    # フレーム間差分が最大のフレーム。トスより打撃を優先するため、動画の20%〜90%の範囲で検索
     n_diffs = len(frame_diffs)
     skip = 3
     if n_diffs > 20:
-        search_range = frame_diffs[10:-10]
-        impact_index = (int(np.argmax(search_range)) + 10) * skip
+        lo = int(n_diffs * 0.2)
+        hi = int(n_diffs * 0.9)
+        lo = min(lo, n_diffs - 10)
+        hi = max(hi, lo + 5)
+        search_range = frame_diffs[lo:hi]
+        if len(search_range) > 0:
+            impact_index = (lo + int(np.argmax(search_range))) * skip
+        else:
+            search_range = frame_diffs[10:-10]
+            impact_index = (int(np.argmax(search_range)) + 10) * skip
     else:
         impact_index = int(np.argmax(frame_diffs)) * skip
     

@@ -38,7 +38,7 @@ def analyze_video(video_path: str) -> dict:
         impact_index = 0
 
     # 2. インパクト前後の骨格抽出（既存ロジック）
-    diag = extract_pose_landmarks(video_path, impact_index, range_sec=1.0)
+    diag = extract_pose_landmarks(video_path, impact_index, range_sec=2.0)
     norm = diag.get("norm")
     if norm is None or len(norm) == 0:
         return _error_result("動画から骨格を検出できませんでした。")
