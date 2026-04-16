@@ -13,6 +13,76 @@ BASE_DIR = os.path.dirname(__file__)
 MODEL_PATH = os.path.join(BASE_DIR, "models", "pose_landmarker_full.task")
 
 # ==============================
+# Render など GPU なしサーバーで MediaPipe が必要とする
+# libGLESv2.so.2 が存在しない問題をコードで解決する
+# ==============================
+def _ensure_gles_stub():
+    """
+    libGLESv2.so.2 が見つからない環境向けのスタブを作成し、
+    LD_LIBRARY_PATH に追加する。
+    ctypes.CDLL は dlopen() を使うので、呼び出し前に LD_LIBRARY_PATH を
+    変更すれば反映される。
+    """
+    import ctypes.util
+    # すでに libGLESv2 が見つかれば何もしない
+    if ctypes.util.find_library("GLESv2"):
+        return
+
+    stub_dir = "/tmp/gl_stubs"
+    stub_path = os.path.join(stub_dir, "libGLESv2.so.2")
+
+    if not os.path.exists(stub_path):
+        os.makedirs(stub_dir, exist_ok=True)
+        created = False
+
+        # 方法1: gcc でスタブの .so を作成
+        try:
+            import subprocess
+            # MediaPipe が実際には GPU 関数を呼ばないため空の実装でよい
+            c_code = b"void glGenBuffers(){} void glDeleteBuffers(){} void glBindBuffer(){}"
+            result = subprocess.run(
+                ["gcc", "-x", "c", "-shared", "-fPIC", "-o", stub_path, "-"],
+                input=c_code,
+                capture_output=True,
+                timeout=30,
+            )
+            if result.returncode == 0 and os.path.exists(stub_path):
+                created = True
+                logging.info("libGLESv2 スタブを gcc で作成しました")
+        except Exception as e:
+            logging.debug(f"gcc スタブ作成失敗: {e}")
+
+        # 方法2: システムにある別の GL 系ライブラリをコピーして代用
+        if not created:
+            import glob, shutil
+            candidates = (
+                glob.glob("/usr/lib/x86_64-linux-gnu/libEGL.so*")
+                + glob.glob("/usr/lib/x86_64-linux-gnu/libGL.so*")
+                + glob.glob("/usr/lib/*/libEGL.so*")
+                + glob.glob("/usr/lib/*/libGL.so*")
+            )
+            for candidate in candidates:
+                if os.path.isfile(candidate):
+                    try:
+                        shutil.copy2(candidate, stub_path)
+                        created = True
+                        logging.info(f"libGLESv2 スタブ: {candidate} をコピーして代用")
+                        break
+                    except Exception:
+                        pass
+
+        if not created:
+            logging.warning("libGLESv2 スタブの作成に失敗しました。MediaPipe が動かない可能性があります。")
+            return
+
+    # LD_LIBRARY_PATH にスタブのディレクトリを追加
+    current_path = os.environ.get("LD_LIBRARY_PATH", "")
+    if stub_dir not in current_path:
+        os.environ["LD_LIBRARY_PATH"] = f"{stub_dir}:{current_path}" if current_path else stub_dir
+        logging.info(f"LD_LIBRARY_PATH に {stub_dir} を追加しました")
+
+
+# ==============================
 # モデルは初回使用時に1回だけロード（サーバー起動を高速化）
 # ==============================
 _detector = None
@@ -23,6 +93,8 @@ def _get_detector():
     if _detector is None:
         with _detector_lock:
             if _detector is None:
+                # GPU なしサーバー向け: libGLESv2 スタブを準備してから MediaPipe をロード
+                _ensure_gles_stub()
                 logging.info("MediaPipe PoseLandmarker モデルをロード中...")
                 base = python.BaseOptions(model_asset_path=MODEL_PATH)
                 _detector = vision.PoseLandmarker.create_from_options(
