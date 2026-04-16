@@ -1,13 +1,14 @@
 FROM python:3.11-slim
 
 # MediaPipe / OpenCV がサーバー環境で必要とするシステムライブラリをインストール
+# Debian trixie では libgl1-mesa-glx → libgl1 に名前変更されている
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgles2 \
-    libgl1-mesa-glx \
+    libgl1 \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
-    libxrender-dev \
+    libxrender1 \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
