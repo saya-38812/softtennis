@@ -37,6 +37,42 @@ from ai.video_renderer import render_analyzed_video
 from ai.video_pose import detect_impact_frame
 
 # ============================
+# WebM → MP4 変換（Render など OpenCV が WebM を読めない環境向け）
+# imageio-ffmpeg にバンドルされた FFmpeg を使う
+# ============================
+def _convert_webm_to_mp4(webm_path: str) -> str:
+    """
+    WebM ファイルを MP4 に変換して返す。
+    変換に失敗した場合は元のパスをそのまま返す。
+    """
+    try:
+        import subprocess
+        import imageio_ffmpeg
+        mp4_path = webm_path.replace(".webm", ".mp4")
+        ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+        result = subprocess.run(
+            [
+                ffmpeg_exe, "-y",
+                "-i", webm_path,
+                "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+                "-an",  # 音声なし（サーブ練習なので不要）
+                mp4_path,
+            ],
+            capture_output=True,
+            timeout=120,
+        )
+        if result.returncode == 0 and os.path.isfile(mp4_path):
+            logging.info(f"WebM→MP4変換成功: {mp4_path}")
+            return mp4_path
+        else:
+            logging.warning(f"WebM→MP4変換失敗: {result.stderr.decode(errors='replace')}")
+            return webm_path
+    except Exception as e:
+        logging.warning(f"WebM→MP4変換エラー: {e}")
+        return webm_path
+
+
+# ============================
 # FastAPI
 # ============================
 @asynccontextmanager
@@ -332,6 +368,10 @@ async def api_analysis(
     video_path = get_session_video_path(session_id)
     if not video_path:
         raise HTTPException(status_code=500, detail="Failed to save video")
+
+    # WebM は OpenCV が読めない環境（Render など）があるので MP4 に変換する
+    if video_path.endswith(".webm"):
+        video_path = _convert_webm_to_mp4(video_path)
 
     clip_paths = []
     tracking_video_done = False
