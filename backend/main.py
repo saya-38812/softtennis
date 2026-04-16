@@ -387,7 +387,7 @@ async def api_analysis(
             analysis = None
             clip_path = None
             try:
-                clip_path = extract_clip(video_path, float(ts), range_sec=2.0)
+                clip_path = extract_clip(video_path, float(ts), range_sec=1.0)
                 clip_paths.append(clip_path)
                 analysis = _analyze_clip_to_result(clip_path)
             except Exception as e:
@@ -421,7 +421,7 @@ async def api_analysis(
                     except Exception:
                         impact_index = int(1.5 * fps)
                     impact_index = max(0, impact_index)
-                diag = extract_pose_landmarks(video_path, impact_index=impact_index, range_sec=1.5)
+                diag = extract_pose_landmarks(video_path, impact_index=impact_index, range_sec=0.75)
                 pixel = diag.get("pixel")
                 start_frame = diag.get("start_frame", 0)
                 if pixel is not None and len(pixel) > 0:
