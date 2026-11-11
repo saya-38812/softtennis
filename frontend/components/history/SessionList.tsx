@@ -39,17 +39,23 @@ export function SessionList({ sessions, onDelete }: SessionListProps) {
                 }}
               >
                 <div style={{ fontWeight: 600 }}>
-                  {new Date(s.date).toLocaleString("ja-JP")}
+                  {/* 日時は created_at（時刻まで入った値）を優先して表示する。
+                      date（"YYYY-MM-DD"）を new Date() に渡すと UTC の0時と解釈され、
+                      日本時間では「9:00:00」と表示されてしまうため */}
+                  {new Date(s.created_at ?? s.date).toLocaleString("ja-JP")}
                 </div>
-                {s.source === "upload" ? (
-                  <p style={{ fontSize: "0.875rem", color: "var(--muted)", marginTop: "0.25rem", margin: "0.25rem 0 0 0" }}>
-                    アップロードから
-                  </p>
-                ) : (
-                  <div style={{ fontSize: "0.875rem", color: "var(--muted)", marginTop: "0.25rem" }}>
-                    {s.total_attempts}本 &nbsp; IN {s.in_count} / FAULT {s.fault_count ?? 0} &nbsp; IN率 {accuracy}%
-                  </div>
-                )}
+                {/* アップロード画面でも IN/FAULT を記録するようになったので、件数は常に表示する */}
+                <div style={{ fontSize: "0.875rem", color: "var(--muted)", marginTop: "0.25rem" }}>
+                  {s.source === "upload" && <span>📁 アップロード &nbsp;</span>}
+                  {/* フォームだけ解析のときは本数・IN率に意味がないので出さない */}
+                  {s.mode === "form_only" ? (
+                    <span>📐 フォーム解析のみ</span>
+                  ) : (
+                    <span>
+                      {s.total_attempts}本 &nbsp; IN {s.in_count} / FAULT {s.fault_count ?? 0} &nbsp; IN率 {accuracy}%
+                    </span>
+                  )}
+                </div>
               </Link>
               {onDelete && (
                 <button

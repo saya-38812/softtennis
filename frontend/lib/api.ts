@@ -24,6 +24,19 @@ export interface TrackerSession {
   tracking_video?: string | null;
   /** 出所（"upload" = アップロード画面から） */
   source?: string | null;
+  /**
+   * セッションの種類
+   * - "serve_tracking"（または未設定）: IN/FAULT を記録した通常の練習
+   * - "form_only": IN/FAULT は付けず、動画のフォームだけを解析してもらう（サーブ1本分）
+   */
+  mode?: "serve_tracking" | "form_only";
+  /** Google Drive にアップロードした動画（未アップロードなら undefined） */
+  drive_file?: {
+    id: string;
+    name: string;
+    webViewLink?: string;
+    uploaded_at: string;
+  };
   total_attempts: number;
   in_count: number;
   out_count: number;

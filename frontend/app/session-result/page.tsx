@@ -1,9 +1,12 @@
 "use client";
 
-import { Suspense, useEffect, useState, useCallback, useRef } from "react";
+import { Suspense, useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { getSession, runFormAnalysis, type TrackerSession, type ServeAnalysis } from "@/lib/api";
+import type { TrackerSession, ServeAnalysis } from "@/lib/api";
+// セッションはブラウザ内（localStorage）から読み込む
+import { getLocalSession, isFormOnly } from "@/lib/localSession";
+import { DriveUploadPanel } from "@/components/result/DriveUploadPanel";
 import { fromAnalysis } from "@/lib/uploadResult";
 import { TrackerStats } from "@/components/tracker/TrackerStats";
 import { useSessionVideo } from "@/contexts/SessionVideoContext";
@@ -145,27 +148,39 @@ function AnalysisPanel({ analysis }: { analysis: ServeAnalysis }) {
 function SessionResultContent() {
   const searchParams = useSearchParams();
   const sessionId = searchParams.get("session_id");
-  const { videoBlob, clearVideo } = useSessionVideo();
+  const { videoBlob } = useSessionVideo();
 
   const [session, setSession] = useState<TrackerSession | null>(null);
   const [loading, setLoading] = useState(true);
-  const [analyzing, setAnalyzing] = useState(false);
+  // 解析はこれから Drive → Colab で行うので、今は常に false（表示部分を残すために変数は残す）
+  const analyzing = false;
   const [error, setError] = useState<string | null>(null);
   // 複数サーブがある場合、どのサーブの解析を表示するか
   const [selectedServeId, setSelectedServeId] = useState<string | null>(null);
-  const analysisTriggeredRef = useRef(false);
+  // 録画した動画（Blob）を <video> で再生するための一時URL
+  const [localVideoUrl, setLocalVideoUrl] = useState<string | null>(null);
 
-  const loadSession = useCallback(async () => {
+  // ブラウザ内に保存されたセッションを読み込む
+  const loadSession = useCallback(() => {
     if (!sessionId) return;
-    try {
-      const data = await getSession(sessionId);
+    const data = getLocalSession(sessionId);
+    if (data) {
       setSession(data);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load session");
-    } finally {
-      setLoading(false);
+    } else {
+      setError("セッションが見つかりません");
     }
+    setLoading(false);
   }, [sessionId]);
+
+  // 録画した動画の Blob から、再生用の一時URLを作る
+  // URL.createObjectURL で作ったURLはメモリを使い続けるので、
+  // 画面を離れるとき（クリーンアップ関数）に revokeObjectURL で解放する
+  useEffect(() => {
+    if (!videoBlob) return;
+    const url = URL.createObjectURL(videoBlob);
+    setLocalVideoUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [videoBlob]);
 
   useEffect(() => {
     if (!sessionId) {
@@ -175,58 +190,6 @@ function SessionResultContent() {
     }
     loadSession();
   }, [sessionId, loadSession]);
-
-  // 録画＋タイムスタンプが揃っていれば自動でフォーム解析を実行
-  useEffect(() => {
-    if (!sessionId || !session || loading) return;
-    if (!videoBlob || !session.serves?.length || analyzing || analysisTriggeredRef.current) return;
-    const hasAnalysis = session.analysis && Object.keys(session.analysis).length > 0;
-    if (hasAnalysis) {
-      clearVideo();
-      return;
-    }
-    const hasTimestamps = session.serves.some((s) => typeof s.timestamp_sec === "number");
-    if (!hasTimestamps) {
-      clearVideo();
-      return;
-    }
-    analysisTriggeredRef.current = true;
-    setAnalyzing(true);
-    setError(null);
-    const serveEvents = session.serves
-      .filter((s) => typeof s.timestamp_sec === "number")
-      .map((s) => ({ id: s.id, result: s.result, timestamp_sec: s.timestamp_sec! }));
-    runFormAnalysis(sessionId, videoBlob, serveEvents)
-      .then((updated) => {
-        setSession(updated);
-        clearVideo();
-        setTimeout(() => {
-          getSession(sessionId).then(setSession).catch(() => {});
-        }, 300);
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : "姿勢解析に失敗しました"))
-      .finally(() => setAnalyzing(false));
-  }, [sessionId, videoBlob, session, loading, analyzing, clearVideo]);
-
-  // 手動でフォーム解析を実行するボタン用ハンドラ
-  const handleFormAnalysis = async () => {
-    if (!sessionId || !videoBlob || !session?.serves?.length) return;
-    setAnalyzing(true);
-    setError(null);
-    try {
-      const serveEvents = session.serves
-        .filter((s) => typeof s.timestamp_sec === "number")
-        .map((s) => ({ id: s.id, result: s.result, timestamp_sec: s.timestamp_sec! }));
-      const updated = await runFormAnalysis(sessionId, videoBlob, serveEvents);
-      setSession(updated);
-      clearVideo();
-      getSession(sessionId).then(setSession).catch(() => {});
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "解析に失敗しました");
-    } finally {
-      setAnalyzing(false);
-    }
-  };
 
   // ローディング中
   if (loading) {
@@ -261,30 +224,24 @@ function SessionResultContent() {
   const activeServeId = selectedServeId ?? servesWithAnalysis[0]?.id ?? null;
   const activeAnalysis = activeServeId ? analysisMap[activeServeId] : null;
 
-  // 動画 URL（トラッキング動画があればそちらを優先）
-  const apiBase = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
-  const trackingVideoUrl = session.tracking_video
-    ? `${apiBase}/outputs/${session.tracking_video}`
-    : null;
-  const sessionVideoUrl =
-    session.video_path && sessionId
-      ? `${apiBase}/api/sessions/${sessionId}/video`
-      : null;
-  const videoUrl = trackingVideoUrl ?? sessionVideoUrl;
-
-  // フォーム解析ボタンを表示する条件
-  const canAnalyze =
-    !!videoBlob &&
-    serves.length > 0 &&
-    serves.some((s) => typeof s.timestamp_sec === "number");
+  // 再生する動画：今は録画直後の動画のみ（Drive の動画表示は後のステップで追加）
+  const videoUrl = localVideoUrl;
+  // 「フォームだけ解析」のセッションか（IN/FAULT の統計は意味がないので出さない）
+  const formOnly = isFormOnly(session);
 
   return (
     <main className="container" style={{ paddingTop: "1rem", paddingBottom: "5rem" }}>
 
-      {/* セッション統計（常に表示） */}
-      <div style={{ marginBottom: "1rem" }}>
-        <TrackerStats session={session} />
-      </div>
+      {/* セッション統計（IN/FAULT を記録したセッションだけ表示） */}
+      {formOnly ? (
+        <p style={{ fontSize: "0.875rem", color: "var(--muted)", margin: "0 0 1rem 0" }}>
+          📐 フォーム解析のみ（IN / FAULT の記録なし）
+        </p>
+      ) : (
+        <div style={{ marginBottom: "1rem" }}>
+          <TrackerStats session={session} />
+        </div>
+      )}
 
       {/* 解析動画プレイヤー */}
       {videoUrl && (
@@ -370,26 +327,14 @@ function SessionResultContent() {
         </>
       )}
 
-      {/* 解析なし・解析ボタン表示 */}
+      {/* 解析がまだない場合：Drive へのアップロード欄を表示 */}
       {!hasAnalysis && !analyzing && (
-        <div style={{ marginBottom: "1rem" }}>
-          {serves.length === 0 ? (
-            <p className="text-muted">サーブが記録されていません。</p>
-          ) : canAnalyze ? (
-            <button
-              type="button"
-              className="btn btn-primary btn-block"
-              onClick={handleFormAnalysis}
-              style={{ padding: "0.75rem" }}
-            >
-              フォーム解析する
-            </button>
-          ) : (
-            <p className="text-muted" style={{ fontSize: "0.875rem" }}>
-              フォーム解析を行うには、セッション終了時に録画が必要です。
-            </p>
-          )}
-        </div>
+        // フォームだけ解析のときは、サーブ記録がなくてもアップロードできる
+        serves.length === 0 && !formOnly ? (
+          <p className="text-muted" style={{ marginBottom: "1rem" }}>サーブが記録されていません。</p>
+        ) : (
+          <DriveUploadPanel session={session} videoBlob={videoBlob} onUploaded={setSession} />
+        )
       )}
 
       {/* エラー表示 */}

@@ -3,7 +3,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { startSession } from "@/lib/api";
+// セッションはサーバーではなくブラウザ内で作る
+import { createLocalSession } from "@/lib/localSession";
+import { GoogleAccountCard } from "@/components/auth/GoogleAccountCard";
 
 function PlayIcon() {
   return (
@@ -23,8 +25,9 @@ export default function HomePage() {
     setStarting(true);
     setError(null);
     try {
-      const { session_id } = await startSession();
-      router.push(`/practice?session_id=${session_id}`);
+      // ブラウザ内に新しいセッションを作り、そのIDを付けて練習画面へ移動
+      const session = createLocalSession();
+      router.push(`/practice?session_id=${session.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to start session");
     } finally {
@@ -47,6 +50,8 @@ export default function HomePage() {
         }}
       >
         <div style={{ width: "100%", maxWidth: 360, display: "flex", flexDirection: "column", alignItems: "center" }}>
+          {/* Google ログインと Drive フォルダの状態 */}
+          <GoogleAccountCard />
           <label
             htmlFor="start-practice"
             style={{
