@@ -34,3 +34,8 @@ __pycache__/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# clasp（GAS をターミナルから更新するツール）
+# .clasp.json にはスクリプトIDが入るので、公開リポジトリには含めない（例は gas/.clasp.json.example）
+gas/.clasp.json
+gas/node_modules/

@@ -2,9 +2,10 @@
  * サーブノート 管理用スプレッドシートの GAS（Google Apps Script）
  *
  * 役割：
- *   Webアプリ（Vercel）から「動画をアップロードしました」という連絡を受け取り、
- *   管理用スプレッドシートの「sessions」シートに1行追加する。
- *   この行が、Colab にとっての「解析待ちリスト」になる。
+ *   1. Webアプリ（Vercel）から「動画をアップロードしました」という連絡を受け取り、
+ *      管理用スプレッドシートの「sessions」シートに1行追加する。
+ *      この行が、Colab にとっての「解析待ちリスト」になる。
+ *   2. Colab が書き込んだ解析結果を、依頼者本人にだけ返す。
  *
  * 使い方：
  *   1. 管理用スプレッドシートを開き、[拡張機能] → [Apps Script] を開く
@@ -67,7 +68,20 @@ const STATUS_PENDING = '解析待ち';
 function doPost(e) {
   try {
     const body = JSON.parse(e.postData.contents);
-    const result = handleUploadNotice_(body);
+    // action で処理を振り分ける（action がない古い形式は「アップロードの連絡」として扱う）
+    //   - "notify_upload" : 動画をアップロードしたので解析をお願いします
+    //   - "get_results"   : 解析結果をください
+    // ※ 結果の取得も GET ではなく POST にしているのは、アクセストークンを URL に載せないため。
+    //   URL はブラウザの履歴やサーバーのログに残りやすいので、秘密の値は本文（body）で送る。
+    const action = body.action || 'notify_upload';
+    let result;
+    if (action === 'notify_upload') {
+      result = handleUploadNotice_(body);
+    } else if (action === 'get_results') {
+      result = handleGetResults_(body);
+    } else {
+      throw new Error('不明な action です: ' + action);
+    }
     return jsonResponse_({ ok: true, ...result });
   } catch (err) {
     // エラーの内容をアプリに返す（アプリ側で画面に表示できるように）
@@ -153,6 +167,62 @@ function handleUploadNotice_(body) {
   } finally {
     lock.releaseLock(); // 処理が終わったら（エラーでも）必ずロックを外す
   }
+}
+
+/**
+ * 解析結果を返す
+ *
+ * 他人の結果を見られないよう、トークンから確認したメールアドレスと
+ * 行の requester_email が一致するものだけを返す。
+ *
+ * 受け取るもの：{ action: "get_results", access_token, session_ids: ["...", "..."] }
+ * 返すもの：{ results: { セッションID: { status, analyzed_at, result, error_message } } }
+ *   （見つからない・本人のものでないセッションIDは results に含めない）
+ */
+function handleGetResults_(body) {
+  if (!body.access_token) throw new Error('必要な項目がありません: access_token');
+  const ids = Array.isArray(body.session_ids) ? body.session_ids : [];
+  if (ids.length === 0) return { results: {} };
+  if (ids.length > 100) throw new Error('一度に問い合わせできるのは100件までです');
+
+  const email = fetchVerifiedEmail_(body.access_token);
+  const wanted = {};
+  ids.forEach(function (id) { wanted[id] = true; });
+
+  const sheet = getOrCreateSheet_();
+  const lastRow = sheet.getLastRow();
+  const results = {};
+  if (lastRow < 2) return { results: results };
+
+  // 全行をまとめて読み込む（1行ずつ読むより圧倒的に速い）
+  const values = sheet.getRange(2, 1, lastRow - 1, COLUMNS.length).getValues();
+  const col = function (name) { return COLUMNS.indexOf(name); };
+
+  values.forEach(function (row) {
+    const sessionId = row[col('session_id')];
+    if (!wanted[sessionId]) return;
+    // 本人の依頼でなければ返さない（大文字・小文字の違いは無視して比べる）
+    if (String(row[col('requester_email')]).toLowerCase() !== email.toLowerCase()) return;
+
+    let parsed = null;
+    const raw = row[col('result_json')];
+    if (raw) {
+      try {
+        parsed = JSON.parse(raw);
+      } catch (err) {
+        parsed = null; // 壊れた JSON は「結果なし」として扱う
+      }
+    }
+    const analyzedAt = row[col('analyzed_at')];
+    results[sessionId] = {
+      status: row[col('status')],
+      // 日付型のときは文字列にそろえて返す（Colab は文字列で書くが、手で編集されると日付型になるため）
+      analyzed_at: analyzedAt instanceof Date ? analyzedAt.toISOString() : String(analyzedAt || ''),
+      result: parsed,
+      error_message: String(row[col('error_message')] || ''),
+    };
+  });
+  return { results: results };
 }
 
 // ============================================================

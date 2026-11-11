@@ -39,6 +39,8 @@ export interface TrackerSession {
   };
   /** 管理用スプシ（GAS）へ解析を依頼した日時（未依頼なら undefined） */
   analysis_requested_at?: string;
+  /** Colab で解析が終わった結果（完了したものだけ端末に保存しておく） */
+  model_analysis?: ModelAnalysisResult;
   total_attempts: number;
   in_count: number;
   out_count: number;
@@ -50,6 +52,52 @@ export interface TrackerSession {
     timestamp_sec?: number;
   }[];
   analysis?: Record<string, ServeAnalysis>;
+}
+
+// ============================================================
+// お手本比較の解析結果（Colab の backend/ai/session_runner.py が作る形）
+// Python 側の形を変えたら、ここも合わせて直すこと
+// ============================================================
+
+/** 採点する5つの指標 */
+export type MetricKey =
+  | "impact_height"
+  | "elbow_angle"
+  | "body_sway"
+  | "waist_speed"
+  | "weight_transfer";
+
+/** サーブ1本分の採点結果 */
+export interface ModelServeResult {
+  index: number;
+  result: ServeResult | null; // フォームだけ解析のときは null
+  timestamp_sec: number | null;
+  status: "ok" | "error";
+  message?: string; // エラーのときの理由
+  overall_score?: number; // 5指標の平均（0〜100）
+  scores?: Record<MetricKey, number>; // 指標ごとの点数（0〜100、お手本 = 90点）
+  focus_key?: MetricKey; // 一番点数が低い指標 = 改善ポイント
+  focus_label?: string;
+  ai_text?: string; // 改善ポイントへのアドバイス
+  cue?: string; // 身体感覚のイメージ
+  practice?: string; // おすすめの練習
+}
+
+/** セッション全体の解析結果 */
+export interface ModelAnalysisResult {
+  version: number;
+  mode: "serve_tracking" | "form_only";
+  serves: ModelServeResult[];
+  summary: {
+    analyzed_count: number;
+    error_count: number;
+    average_score?: number;
+    top_focus_key?: MetricKey;
+    top_focus_label?: string;
+    top_focus_count?: number;
+    average_score_in?: number;
+    average_score_fault?: number;
+  };
 }
 
 export interface SessionStartResponse {

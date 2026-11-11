@@ -10,8 +10,7 @@
  * ① が成功して ② だけ失敗することもあるので、その場合は
  * 動画を上げ直さずに ② だけやり直せるボタンを出す。
  *
- * 状態によって表示が変わる：
- *   - 依頼済み               → 「解析待ち」と Drive のリンク
+ * 状態によって表示が変わる（依頼済みのあとは AnalysisStatusPanel が引き継ぐ）：
  *   - アップロード済み・未依頼 → 「解析を依頼する」ボタン（② のやり直し）
  *   - 動画が手元にない       → 「録画直後にしかアップロードできない」と案内
  *   - 未ログイン             → ログインボタン
@@ -108,20 +107,9 @@ export function DriveUploadPanel({ session, videoBlob, onUploaded }: DriveUpload
   // ---- 表示の切り替え（上から順に判定する） ----
   let content: React.ReactNode;
 
-  if (session.drive_file && session.analysis_requested_at) {
-    // 依頼済み
-    content = (
-      <>
-        <p style={{ margin: "0 0 0.4rem 0", color: "var(--success)", fontWeight: 600 }}>
-          ✅ 解析を依頼しました（解析待ち）
-        </p>
-        {driveLink}
-        <p className="text-muted" style={{ fontSize: "0.8rem", margin: "0.5rem 0 0 0" }}>
-          フォーム解析の結果は、準備ができ次第ここに表示されます。
-        </p>
-      </>
-    );
-  } else if (session.drive_file) {
+  // ※ 依頼済み（analysis_requested_at あり）のときは、結果画面が AnalysisStatusPanel に切り替えるので、
+  //   この部品が表示されるのは「まだ依頼していない」ときだけ
+  if (session.drive_file) {
     // アップロード済みだが、依頼がまだ（依頼に失敗した）
     content = (
       <>

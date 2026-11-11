@@ -11,7 +11,7 @@
  * ※ 動画は大きすぎるので localStorage には入れない（SessionVideoContext で持つ）
  */
 
-import type { ServeResult, TrackerSession } from "@/lib/api";
+import type { ModelAnalysisResult, ServeResult, TrackerSession } from "@/lib/api";
 
 // localStorage に保存するときのキー名（他のデータとぶつからないようにアプリ名を付ける）
 const STORAGE_KEY = "servenote.sessions";
@@ -219,6 +219,14 @@ export function markLocalSessionRequested(sessionId: string): TrackerSession {
     ...session,
     analysis_requested_at: new Date().toISOString(),
   }));
+}
+
+/**
+ * 解析が完了した結果を端末に保存する。
+ * 一度保存しておけば、次からは GAS に問い合わせなくても（ログインしていなくても）結果を見られる。
+ */
+export function saveLocalAnalysis(sessionId: string, result: ModelAnalysisResult): TrackerSession {
+  return updateSession(sessionId, (session) => ({ ...session, model_analysis: result }));
 }
 
 /** セッションを1件削除する（履歴画面の「削除」ボタン用） */

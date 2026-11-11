@@ -1,0 +1,13 @@
+{
+  "name": "servenote-gas",
+  "private": true,
+  "description": "サーブノート管理用スプレッドシートの GAS を、ターミナルから更新するための設定",
+  "scripts": {
+    "login": "clasp login",
+    "push": "clasp push --force",
+    "deploy": "node deploy.mjs"
+  },
+  "devDependencies": {
+    "@google/clasp": "3.4.1"
+  }
+}

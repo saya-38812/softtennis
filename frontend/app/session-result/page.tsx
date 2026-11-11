@@ -7,6 +7,8 @@ import type { TrackerSession, ServeAnalysis } from "@/lib/api";
 // セッションはブラウザ内（localStorage）から読み込む
 import { getLocalSession, isFormOnly } from "@/lib/localSession";
 import { DriveUploadPanel } from "@/components/result/DriveUploadPanel";
+import { AnalysisStatusPanel } from "@/components/result/AnalysisStatusPanel";
+import { ModelAnalysisView } from "@/components/result/ModelAnalysisView";
 import { fromAnalysis } from "@/lib/uploadResult";
 import { TrackerStats } from "@/components/tracker/TrackerStats";
 import { useSessionVideo } from "@/contexts/SessionVideoContext";
@@ -327,12 +329,18 @@ function SessionResultContent() {
         </>
       )}
 
-      {/* 解析がまだない場合：Drive へのアップロード欄を表示 */}
+      {/* お手本比較の解析：状況に応じて「結果」「解析状況」「アップロード欄」のどれかを表示 */}
       {!hasAnalysis && !analyzing && (
-        // フォームだけ解析のときは、サーブ記録がなくてもアップロードできる
-        serves.length === 0 && !formOnly ? (
+        session.model_analysis ? (
+          // ① 解析が完了していて、結果が端末に保存されている
+          <ModelAnalysisView result={session.model_analysis} />
+        ) : session.analysis_requested_at ? (
+          // ② 依頼済みで結果待ち → GAS に状況を問い合わせる（完了していたら①に切り替わる）
+          <AnalysisStatusPanel session={session} onCompleted={setSession} />
+        ) : serves.length === 0 && !formOnly ? (
           <p className="text-muted" style={{ marginBottom: "1rem" }}>サーブが記録されていません。</p>
         ) : (
+          // ③ まだ依頼していない → アップロード欄（フォームだけ解析なら記録0本でもOK）
           <DriveUploadPanel session={session} videoBlob={videoBlob} onUploaded={setSession} />
         )
       )}

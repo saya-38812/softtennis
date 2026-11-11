@@ -1,0 +1,6 @@
+# clasp push で GAS に送るファイルを決める設定（.gitignore と同じ書き方）
+# まず全部を「送らない」にしてから、送りたいファイルだけを ! で戻す。
+# （package.json や deploy.mjs まで GAS に送られると、GAS 側でエラーになるため）
+**/**
+!Code.gs
+!appsscript.json
