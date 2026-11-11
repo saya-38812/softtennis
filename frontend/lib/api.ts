@@ -37,6 +37,8 @@ export interface TrackerSession {
     webViewLink?: string;
     uploaded_at: string;
   };
+  /** 管理用スプシ（GAS）へ解析を依頼した日時（未依頼なら undefined） */
+  analysis_requested_at?: string;
   total_attempts: number;
   in_count: number;
   out_count: number;

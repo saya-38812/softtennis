@@ -213,6 +213,14 @@ export function markLocalSessionUploaded(
   }));
 }
 
+/** 管理用スプシ（GAS）へ解析を依頼できたことを記録する */
+export function markLocalSessionRequested(sessionId: string): TrackerSession {
+  return updateSession(sessionId, (session) => ({
+    ...session,
+    analysis_requested_at: new Date().toISOString(),
+  }));
+}
+
 /** セッションを1件削除する（履歴画面の「削除」ボタン用） */
 export function deleteLocalSession(sessionId: string): void {
   // 指定ID以外を残す ＝ 指定IDだけを消す
