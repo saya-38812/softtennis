@@ -3,13 +3,13 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import type { TrackerSession, ServeResult } from "@/lib/api";
+// サーブの記録はサーバーに送らず、ブラウザ内（localStorage）に保存する
 import {
-  getSession,
-  recordServe,
-  undoServe,
-  type TrackerSession,
-  type ServeResult,
-} from "@/lib/api";
+  getLocalSession,
+  addLocalServe,
+  undoLocalServe,
+} from "@/lib/localSession";
 import { TrackerStats } from "@/components/tracker/TrackerStats";
 import { useSessionVideo } from "@/contexts/SessionVideoContext";
 
@@ -31,16 +31,17 @@ function PracticeContent() {
   const chunksRef = useRef<Blob[]>([]);
   const recordingStartTimeRef = useRef<number>(0);
 
-  const fetchSession = useCallback(async () => {
+  // ブラウザ内に保存されたセッションを読み込む
+  // （localStorage の読み込みは一瞬で終わるので async は不要）
+  const fetchSession = useCallback(() => {
     if (!sessionId) return;
-    try {
-      const data = await getSession(sessionId);
+    const data = getLocalSession(sessionId);
+    if (data) {
       setSession(data);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load session");
-    } finally {
-      setLoading(false);
+    } else {
+      setError("セッションが見つかりません。ホームから始めてください。");
     }
+    setLoading(false);
   }, [sessionId]);
 
   useEffect(() => {
@@ -122,27 +123,31 @@ function PracticeContent() {
     return (Date.now() - recordingStartTimeRef.current) / 1000;
   }, []);
 
-  const handleRecord = async (result: ServeResult) => {
+  // IN / FAULT ボタンが押されたときの処理
+  const handleRecord = (result: ServeResult) => {
     if (!sessionId || recording) return;
     setRecording(result);
+    // 録画開始から何秒後に押したか（後で動画を1本ずつ切り出すときの目印になる）
     const timestamp_sec = getTimestampSec();
     try {
-      await recordServe(sessionId, result, timestamp_sec);
-      await fetchSession();
+      // 保存した結果（件数を数え直した最新のセッション）をそのまま画面に反映
+      const updated = addLocalServe(sessionId, result, timestamp_sec);
+      setSession(updated);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Record failed");
+      setError(e instanceof Error ? e.message : "記録に失敗しました");
     } finally {
       setRecording(null);
     }
   };
 
-  const handleUndo = async () => {
+  // 直前のサーブを取り消す
+  const handleUndo = () => {
     if (!sessionId || (session?.total_attempts ?? 0) === 0) return;
     try {
-      await undoServe(sessionId);
-      await fetchSession();
+      const updated = undoLocalServe(sessionId);
+      setSession(updated);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Undo failed");
+      setError(e instanceof Error ? e.message : "取り消しに失敗しました");
     }
   };
 

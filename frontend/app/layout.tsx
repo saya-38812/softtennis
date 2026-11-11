@@ -13,6 +13,7 @@ export const viewport: Viewport = {
 
 import { LayoutWithTabs } from "@/components/layout";
 import { SessionVideoProvider } from "@/contexts/SessionVideoContext";
+import { GoogleAuthProvider } from "@/contexts/GoogleAuthContext";
 
 export default function RootLayout({
   children,
@@ -22,9 +23,12 @@ export default function RootLayout({
   return (
     <html lang="ja">
       <body style={{ margin: 0, minHeight: "100vh", background: "#0f1419", color: "#e6edf3" }}>
-        <SessionVideoProvider>
-          <LayoutWithTabs>{children}</LayoutWithTabs>
-        </SessionVideoProvider>
+        {/* Google のログイン状態を、どの画面からでも使えるように全体を包む */}
+        <GoogleAuthProvider>
+          <SessionVideoProvider>
+            <LayoutWithTabs>{children}</LayoutWithTabs>
+          </SessionVideoProvider>
+        </GoogleAuthProvider>
       </body>
     </html>
   );

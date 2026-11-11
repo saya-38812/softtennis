@@ -4,42 +4,34 @@ import { useState } from "react";
 import Link from "next/link";
 import { SessionList } from "@/components/history/SessionList";
 import { useSessionList } from "@/hooks/useSessionList";
-import { resetAll, seedSample } from "@/lib/api";
+// 全削除・サンプル作成もブラウザ内（localStorage）で行う
+import { clearAllLocalSessions, createSampleSession } from "@/lib/localSession";
 
 export default function HistoryPage() {
   const { sessions, loading, error, deleteSession, refresh } = useSessionList();
-  const [deletingAll, setDeletingAll] = useState(false);
-  const [loadingSample, setLoadingSample] = useState(false);
+  // localStorage の処理は一瞬で終わるので「削除中…」のような状態管理は不要になった
+  const deletingAll = false;
+  const loadingSample = false;
 
-  const handleDeleteAll = async () => {
-    if (typeof window !== "undefined" && !window.confirm("すべてのセッション・動画を削除しますか？この操作は取り消せません。")) return;
-    setDeletingAll(true);
+  // 全セッションを削除する
+  const handleDeleteAll = () => {
+    if (!window.confirm("この端末に保存されたすべての記録を削除しますか？この操作は取り消せません。")) return;
     try {
-      await resetAll();
-      await refresh();
+      clearAllLocalSessions();
+      refresh();
     } catch (e) {
-      if (typeof window !== "undefined") window.alert(e instanceof Error ? e.message : "全削除に失敗しました");
-    } finally {
-      setDeletingAll(false);
+      window.alert(e instanceof Error ? e.message : "全削除に失敗しました");
     }
   };
 
-  const handleLoadSample = async () => {
-    setLoadingSample(true);
+  // 動作確認用のサンプルセッションを1件追加する
+  const handleLoadSample = () => {
     try {
-      const { created, message } = await seedSample();
-      await refresh();
-      if (typeof window !== "undefined") {
-        if (created.length > 0) {
-          window.alert("サンプルデータを読み込みました。履歴からタップして結果を確認できます。");
-        } else {
-          window.alert(message || "サンプルは既に読み込まれています。");
-        }
-      }
+      createSampleSession();
+      refresh();
+      window.alert("サンプルデータを追加しました。タップすると結果画面を確認できます。");
     } catch (e) {
-      if (typeof window !== "undefined") window.alert(e instanceof Error ? e.message : "サンプルの読み込みに失敗しました");
-    } finally {
-      setLoadingSample(false);
+      window.alert(e instanceof Error ? e.message : "サンプルの作成に失敗しました");
     }
   };
 

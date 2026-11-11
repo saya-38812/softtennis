@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { listSessions, type TrackerSession } from "@/lib/api";
+import type { TrackerSession } from "@/lib/api";
+// 統計もブラウザ内（localStorage）の記録から計算する
+import { listLocalSessions } from "@/lib/localSession";
 import { accuracyPercent } from "@/lib/utils";
 
 /** 全セッションを集計 */
@@ -27,10 +29,10 @@ export default function StatsPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    listSessions()
-      .then(setSessions)
-      .catch((e) => setError(e instanceof Error ? e.message : "読み込み失敗"))
-      .finally(() => setLoading(false));
+    // 保存されている全セッションを読み込む（失敗しても空配列が返るので画面は落ちない）
+    // 「フォームだけ解析」は IN/FAULT がないので、成功率などの集計からは外す
+    setSessions(listLocalSessions().filter((s) => s.mode !== "form_only"));
+    setLoading(false);
   }, []);
 
   if (loading) {
